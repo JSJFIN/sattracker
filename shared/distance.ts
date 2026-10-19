@@ -6,6 +6,7 @@ export type DistancePair = [number | null, number | null];
 export interface DistanceReading {
   ids: [number, number];
   clock: SimulationClock;
+  time: number;
   kilometers: number;
   earthBlocked: boolean;
   altitudeDeltaKm: number;

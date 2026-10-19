@@ -992,6 +992,7 @@ export default function App() {
                 pair={distancePair}
                 reading={currentDistance}
                 selections={selections}
+                elements={elements}
                 name={(id) =>
                   friendlyName(
                     id,

@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Line } from '@react-three/drei';
-import { Vector3, type InterleavedBufferAttribute } from 'three';
+import type { InterleavedBufferAttribute } from 'three';
 import type { Line2, LineSegments2 } from 'three-stdlib';
 import type {
   OrbitalElements,
@@ -24,7 +24,6 @@ interface Props {
   clock: SimulationClock;
   elements: OrbitalElements[];
   selections: SatelliteSelection[];
-  markerPositions: Map<number, Vector3>;
   onReading: (reading: DistanceReading | null) => void;
 }
 const INITIAL_POINTS: [number, number, number][] = [
@@ -39,7 +38,6 @@ export default function DistanceMeasurement({
   clock,
   elements,
   selections,
-  markerPositions,
   onReading,
 }: Props) {
   const line = useRef<Line2 | LineSegments2>(null!);
@@ -61,22 +59,21 @@ export default function DistanceMeasurement({
     const frame = engine.frame.current;
     const time = simulationTime(clock);
     const withinFrame =
-      time >= Math.min(frame.time, frame.until) - 1000 &&
-      time <= Math.max(frame.time, frame.until) + 1000;
+      time >= Math.min(frame.time, frame.until) &&
+      time <= Math.max(frame.time, frame.until);
     const position = (id: number | null): [number, number, number] | null => {
       if (id === null || !available.has(id) || !withinFrame) return null;
       const state = frame.states.get(id);
       if (!state) return null;
-      const marker = visible.has(id) ? markerPositions.get(id) : undefined;
-      return marker
-        ? marker.toArray()
-        : interpolatedPosition(
-            state,
-            frame.futureStates.get(id),
-            frame.time,
-            frame.until,
-            time,
-          );
+      // Quantitative measurements use orbital positions. Marker easing after a
+      // TLE change is a visual effect and must never change the measured range.
+      return interpolatedPosition(
+        state,
+        frame.futureStates.get(id),
+        frame.time,
+        frame.until,
+        time,
+      );
     };
     const a = position(pair[0]);
     const b = position(pair[1]);
@@ -106,6 +103,7 @@ export default function DistanceMeasurement({
           ? {
               ids: pair as [number, number],
               clock,
+              time,
               ...separation,
               altitudeDeltaKm,
             }

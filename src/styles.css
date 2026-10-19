@@ -2498,3 +2498,26 @@ button svg {
   margin: 0;
   accent-color: #f5c980;
 }
+.distance-orbit-data {
+  margin-top: 12px;
+  color: #91a6b7;
+  font-size: 9px;
+}
+.distance-orbit-data summary {
+  cursor: pointer;
+  color: #b6c4d2;
+}
+.distance-orbit-data dl {
+  margin: 10px 0;
+}
+.distance-orbit-data dl > div + div {
+  margin-top: 12px;
+}
+.distance-orbit-data dt {
+  margin-top: 7px;
+}
+.distance-orbit-data dd {
+  margin: 3px 0 0;
+  color: #d2dce6;
+  overflow-wrap: anywhere;
+}

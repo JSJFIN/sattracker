@@ -553,7 +553,6 @@ function OrbitalScene(props: Props) {
           clock={props.clock}
           elements={elements}
           selections={selections}
-          markerPositions={markerPositions}
           onReading={props.onDistanceReading}
         />
       )}

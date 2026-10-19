@@ -1,5 +1,5 @@
 import { Ruler } from 'lucide-react';
-import type { SatelliteSelection } from '../shared/types';
+import type { OrbitalElements, SatelliteSelection } from '../shared/types';
 import type { DistancePair, DistanceReading } from '../shared/distance';
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   pair: DistancePair;
   reading: DistanceReading | null;
   selections: SatelliteSelection[];
+  elements: OrbitalElements[];
   name: (id: number) => string;
   showLine: boolean;
   onToggle: () => void;
@@ -14,11 +15,19 @@ interface Props {
   onShowLine: (show: boolean) => void;
 }
 
+const utc = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'UTC',
+  dateStyle: 'medium',
+  timeStyle: 'medium',
+  hour12: false,
+});
+
 export default function DistanceTool({
   enabled,
   pair,
   reading,
   selections,
+  elements,
   name,
   showLine,
   onToggle,
@@ -93,6 +102,14 @@ export default function DistanceTool({
             )}
           </output>
           <small>Predicted straight-line separation in 3D.</small>
+          {reading && (
+            <small>
+              At{' '}
+              <time dateTime={new Date(reading.time).toISOString()}>
+                {utc.format(reading.time)} UTC
+              </time>
+            </small>
+          )}
           <dl className="distance-altitude">
             <dt>Altitude difference</dt>
             <dd>
@@ -136,6 +153,32 @@ export default function DistanceTool({
           {showLine && hiddenEndpoint && pair.every((id) => id !== null) && (
             <small>Show both satellites to see the connection.</small>
           )}
+          <details className="distance-orbit-data">
+            <summary>Orbit data</summary>
+            <dl>
+              {(['A', 'B'] as const).map((label, index) => {
+                const element = elements.find(
+                  (item) => item.id === pair[index],
+                );
+                return (
+                  <div key={label}>
+                    <dt>{label} orbit epoch (UTC)</dt>
+                    <dd>
+                      {element ? utc.format(element.epoch) : 'Unavailable'}
+                    </dd>
+                    <dt>{label} fetched (UTC)</dt>
+                    <dd>
+                      {element ? utc.format(element.fetchedAt) : 'Unavailable'}
+                    </dd>
+                  </div>
+                );
+              })}
+            </dl>
+            <small>
+              Orbit predictions can miss maneuvers. Meter-scale close approaches
+              need more precise tracking data.
+            </small>
+          </details>
         </fieldset>
       )}
     </div>

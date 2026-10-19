@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { create } from '@react-three/test-renderer';
 import { ecfToEci, geodeticToEcf, gstime } from 'satellite.js';
-import { Vector3, type InterleavedBufferAttribute } from 'three';
+import type { InterleavedBufferAttribute } from 'three';
 import type { Line2 } from 'three-stdlib';
 import {
   satelliteSeparation,
@@ -25,6 +25,21 @@ import type {
 import type { OrbitEngine } from '../src/useOrbitEngine';
 import DistanceMeasurement from '../src/DistanceMeasurement';
 import fixtures from '../src/data/demo.json';
+import distanceReference from './fixtures/distance-reference.json';
+
+test('ICEYE-X36 / COSMOS 2612 distance agrees with independent Python SGP4 reference results', () => {
+  const time = Date.parse(distanceReference.time);
+  for (const sample of distanceReference.samples) {
+    const [a, b] = sample.elements.map((element) =>
+      stateAt(element.id, parseElements(element), time)!,
+    );
+    const actual = satelliteSeparation(a.position, b.position)!;
+    assert.ok(
+      Math.abs(actual.kilometers - sample.distanceKm) < 0.001,
+      `${sample.source}: independent implementation agreement within one meter`,
+    );
+  }
+});
 
 test('satellite distance measures the 3D segment in kilometers, including altitude, with symmetric endpoints', () => {
   const sameGroundPoint = satelliteSeparation([1.1, 0, 0], [1.2, 0, 0])!;
@@ -92,7 +107,7 @@ test('line of sight checks the finite segment against Earth without changing the
   globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-test('measurement follows rendered endpoints, handles hidden and missing satellites, and keeps line visibility independent of the readout', async (context) => {
+test('measurement follows orbital states, is independent of visibility, and rejects missing or out-of-time data', async (context) => {
   let now = 0;
   context.mock.method(performance, 'now', () => now);
   const time = Date.UTC(2026, 9, 19);
@@ -114,10 +129,6 @@ test('measurement follows rendered endpoints, handles hidden and missing satelli
     visible: true,
     color: '#fff',
   }));
-  const markerPositions = new Map([
-    [a.id, new Vector3(...a.position)],
-    [b.id, new Vector3(1.1, 0.2, 0)],
-  ]);
   const engine: OrbitEngine = {
     frame: {
       current: {
@@ -141,7 +152,6 @@ test('measurement follows rendered endpoints, handles hidden and missing satelli
     engine,
     elements,
     selections,
-    markerPositions,
     clock: { anchorTime: time, anchorRealTime: 0, rate: 0 } as SimulationClock,
     onReading: (reading: DistanceReading | null) => {
       readings.push(reading);
@@ -158,22 +168,23 @@ test('measurement follows rendered endpoints, handles hidden and missing satelli
     const line = renderer.scene.findByType('Line2').instance as Line2;
     const geometry = line.geometry;
     assert.equal(line.visible, true);
-    assert.ok(Math.abs(last()!.kilometers - 0.2 * EARTH_RADIUS_KM) < 1e-9);
+    assert.ok(Math.abs(last()!.kilometers - 0.1 * EARTH_RADIUS_KM) < 1e-9);
+    assert.equal(last()!.time, time);
     const initialAltitudeDelta = last()!.altitudeDeltaKm;
     assert.ok(
       initialAltitudeDelta > 0,
-      'altitude difference uses the same rendered endpoints',
+      'altitude difference uses the same orbital endpoints',
     );
     const end = geometry.getAttribute(
       'instanceEnd',
     ) as InterleavedBufferAttribute;
-    assert.ok(Math.abs(end.getY(0) - 0.2) < 1e-7);
+    assert.ok(Math.abs(end.getY(0) - 0.1) < 1e-7);
 
-    markerPositions.get(b.id)!.set(1.1, 0.3, 0);
+    b.position[1] = 0.2;
     await advance();
     assert.equal(line.geometry, geometry, 'geometry is reused while moving');
-    assert.ok(Math.abs(end.getY(0) - 0.3) < 1e-7);
-    assert.ok(Math.abs(last()!.kilometers - 0.3 * EARTH_RADIUS_KM) < 1e-9);
+    assert.ok(Math.abs(end.getY(0) - 0.2) < 1e-7);
+    assert.ok(Math.abs(last()!.kilometers - 0.2 * EARTH_RADIUS_KM) < 1e-9);
     assert.ok(
       last()!.altitudeDeltaKm > initialAltitudeDelta,
       'the altitude difference updates as the satellites move',
@@ -194,8 +205,8 @@ test('measurement follows rendered endpoints, handles hidden and missing satelli
     await advance();
     assert.equal(line.visible, false);
     assert.ok(
-      Math.abs(last()!.kilometers - 0.1 * EARTH_RADIUS_KM) < 1e-9,
-      'hidden endpoints use current orbital states instead of stale marker positions',
+      Math.abs(last()!.kilometers - 0.2 * EARTH_RADIUS_KM) < 1e-9,
+      'hiding a satellite must not change the numerical distance',
     );
 
     props.elements = [elements[0]];
