@@ -26,7 +26,13 @@ import {
 } from 'three';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { gstime, jday, sunPos } from 'satellite.js';
-import type { OrbitalElements, SatelliteSelection } from '../shared/types';
+import type {
+  OrbitalElements,
+  SatelliteSelection,
+  SimulationClock,
+} from '../shared/types';
+import { interpolatedPosition, simulationTime } from '../shared/clock';
+import { earthFollowPosition } from '../shared/camera';
 import type { OrbitEngine } from './useOrbitEngine';
 
 export interface Layers {
@@ -42,7 +48,7 @@ interface Props {
   engine: OrbitEngine;
   selected: number | null;
   onSelect: (id: number) => void;
-  offset: number;
+  clock: SimulationClock;
   layers: Layers;
   follow: boolean;
   reset: number;
@@ -69,10 +75,10 @@ gl_FragColor=vec4(vec3(.19,.50,.85)*light,rim*.47);
 }`;
 
 function Earth({
-  offset,
+  clock,
   layers,
   earthRef,
-}: Pick<Props, 'offset' | 'layers'> & { earthRef: RefObject<Mesh> }) {
+}: Pick<Props, 'clock' | 'layers'> & { earthRef: RefObject<Mesh> }) {
   const group = useRef<Group>(null!);
   const surface = useRef<ShaderMaterial>(null!);
   const atmosphere = useRef<ShaderMaterial>(null!);
@@ -92,7 +98,7 @@ function Earth({
     [],
   );
   useFrame(() => {
-    const time = new Date(Date.now() + offset);
+    const time = new Date(simulationTime(clock));
     group.current.rotation.y = gstime(time);
     const sun = sunPos(jday(time));
     const direction = new Vector3(
@@ -183,20 +189,22 @@ function Satellite({
   selection,
   element,
   engine,
-  offset,
+  clock,
   selected,
   layers,
   onSelect,
   earthRef,
+  markerPositions,
 }: {
   selection: SatelliteSelection;
   element: OrbitalElements;
   engine: OrbitEngine;
-  offset: number;
+  clock: SimulationClock;
   selected: boolean;
   layers: Layers;
   onSelect: () => void;
   earthRef: RefObject<Mesh>;
+  markerPositions: Map<number, Vector3>;
 }) {
   const group = useRef<Group>(null!);
   const core = useRef<Group>(null!);
@@ -206,25 +214,42 @@ function Satellite({
   const correction = useRef(new Vector3());
   const lastElements = useRef(element.line1 + element.line2);
   const ready = useRef(false);
+  const lastRenderTime = useRef<number | null>(null);
   const { camera } = useThree();
+  useEffect(
+    () => () => {
+      markerPositions.delete(selection.id);
+    },
+    [selection.id, markerPositions],
+  );
   useFrame((_, delta) => {
     const frame = engine.frame.current;
     const state = frame.states.get(selection.id);
     group.current.visible = Boolean(state) && selection.visible;
     if (!state) return;
-    const dt = Math.min(
-      2,
-      Math.max(-1, (Date.now() + offset - frame.time) / 1000),
+    const time = simulationTime(clock);
+    const seeking =
+      lastRenderTime.current !== null &&
+      Math.abs(time - lastRenderTime.current) >
+        Math.max(2000, Math.abs(clock.rate) * Math.min(delta, 0.1) * 5000);
+    lastRenderTime.current = time;
+    target.set(
+      ...interpolatedPosition(
+        state,
+        frame.futureStates.get(selection.id),
+        frame.time,
+        frame.until,
+        time,
+      ),
     );
-    target
-      .set(...state.position)
-      .addScaledVector(new Vector3(...state.velocity), dt);
     const key = element.line1 + element.line2;
-    if (key !== lastElements.current && ready.current)
+    if (seeking) correction.current.set(0, 0, 0);
+    else if (key !== lastElements.current && ready.current)
       correction.current.copy(group.current.position).sub(target);
     lastElements.current = key;
     correction.current.multiplyScalar(Math.exp(-delta * 2));
     group.current.position.copy(target).add(correction.current);
+    markerPositions.set(selection.id, group.current.position);
     // A minimum screen-sized marker keeps physically tiny satellites discoverable.
     const scale = Math.min(
       3,
@@ -232,7 +257,7 @@ function Satellite({
     );
     core.current.scale.setScalar(scale);
     ready.current = true;
-  });
+  }, -0.5);
   return (
     <group ref={group}>
       <group ref={core}>
@@ -302,23 +327,20 @@ function Satellite({
 }
 
 function CameraRig({
-  engine,
   selected,
   follow,
-  offset,
+  clock,
   reset,
   zoom,
-}: Pick<
-  Props,
-  'engine' | 'selected' | 'follow' | 'offset' | 'reset' | 'zoom'
->) {
+  markerPositions,
+}: Pick<Props, 'selected' | 'follow' | 'clock' | 'reset' | 'zoom'> & {
+  markerPositions: Map<number, Vector3>;
+}) {
   const controls = useRef<OrbitControlsImpl>(null!);
   const { camera } = useThree();
-  const previousTarget = useRef(new Vector3());
-  const wasFollowing = useRef(false);
   useEffect(() => {
     controls.current.target.set(0, 0, 0);
-    const sun = sunPos(jday(new Date(Date.now() + offset)));
+    const sun = sunPos(jday(new Date(simulationTime(clock))));
     const direction = new Vector3(
       sun.rsun[0],
       sun.rsun[2],
@@ -329,8 +351,6 @@ function CameraRig({
     camera.position.copy(direction.normalize().multiplyScalar(4.75));
     camera.lookAt(0, 0, 0);
     controls.current.update();
-    previousTarget.current.set(0, 0, 0);
-    wasFollowing.current = false;
   }, [reset, camera]);
   useEffect(() => {
     if (!zoom.sequence) return;
@@ -344,42 +364,36 @@ function CameraRig({
     camera.position.copy(center).add(distance);
     controls.current.update();
   }, [zoom, camera]);
-  useFrame((_, delta) => {
-    const state = selected
-      ? engine.frame.current.states.get(selected)
-      : undefined;
-    if (follow && state) {
-      const dt = Math.min(
-        2,
-        Math.max(0, (Date.now() + offset - engine.frame.current.time) / 1000),
+  useFrame(() => {
+    controls.current.target.set(0, 0, 0);
+    const next = selected ? markerPositions.get(selected) : undefined;
+    if (follow && next) {
+      controls.current.minDistance = Math.max(1.15, next.length() + 0.15);
+      controls.current.maxDistance = Math.max(
+        22,
+        controls.current.minDistance * 2,
       );
-      const next = new Vector3(...state.position).addScaledVector(
-        new Vector3(...state.velocity),
-        dt,
+      camera.position.set(
+        ...earthFollowPosition(
+          next.toArray() as [number, number, number],
+          camera.position.length(),
+        ),
       );
-      const center = controls.current.target
-        .clone()
-        .lerp(next, 1 - Math.exp(-delta * 3));
-      const translation = center.clone().sub(controls.current.target);
-      camera.position.add(translation);
-      controls.current.target.copy(center);
-      previousTarget.current.copy(center);
-      wasFollowing.current = true;
-    } else if (wasFollowing.current) {
-      controls.current.target.lerp(new Vector3(), 1 - Math.exp(-delta * 3));
-      if (controls.current.target.length() < 0.001)
-        wasFollowing.current = false;
+    } else {
+      controls.current.minDistance = 1.15;
+      controls.current.maxDistance = 22;
     }
     if (camera.position.length() < 1.04) camera.position.setLength(1.04);
     controls.current.update();
-  });
+  }, -0.25);
   return (
     <OrbitControls
       ref={controls}
       makeDefault
-      enableDamping
+      enableDamping={!follow}
       dampingFactor={0.065}
       enablePan={false}
+      enableRotate={!follow}
       minDistance={1.15}
       maxDistance={22}
       rotateSpeed={0.55}
@@ -391,6 +405,7 @@ function CameraRig({
 function OrbitalScene(props: Props) {
   const { engine, selections, elements, selected, layers } = props;
   const earthRef = useRef<Mesh>(null!);
+  const markerPositions = useMemo(() => new Map<number, Vector3>(), []);
   const visible = new Set(
     selections
       .filter((selection) => selection.visible)
@@ -401,7 +416,7 @@ function OrbitalScene(props: Props) {
       <color attach="background" args={['#080c13']} />
       <Starfield />
       <Suspense fallback={null}>
-        <Earth offset={props.offset} layers={layers} earthRef={earthRef} />
+        <Earth clock={props.clock} layers={layers} earthRef={earthRef} />
       </Suspense>
       {engine.paths
         .filter((path) => visible.has(path.id) && path.points.length > 1)
@@ -446,16 +461,17 @@ function OrbitalScene(props: Props) {
                 selection={selection}
                 element={element}
                 engine={engine}
-                offset={props.offset}
+                clock={props.clock}
                 selected={selected === selection.id}
                 layers={layers}
                 earthRef={earthRef}
+                markerPositions={markerPositions}
                 onSelect={() => props.onSelect(selection.id)}
               />
             )
           );
         })}
-      <CameraRig {...props} />
+      <CameraRig {...props} markerPositions={markerPositions} />
     </>
   );
 }

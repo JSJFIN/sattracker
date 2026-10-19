@@ -16,13 +16,25 @@ context.onmessage = (event: MessageEvent<WorkerInput>) => {
     lastPaths = 0;
   }
   const states = [];
+  const futureStates = [];
+  const until = message.time + message.rate * 1000;
   const failed: number[] = [];
   for (const { id, record } of records) {
     const state = stateAt(id, record, message.time);
-    if (state) states.push(state);
-    else failed.push(id);
+    if (state) {
+      states.push(state);
+      const future = stateAt(id, record, until);
+      if (future) futureStates.push(future);
+    } else failed.push(id);
   }
-  send({ type: 'states', time: message.time, states, failed });
+  send({
+    type: 'states',
+    time: message.time,
+    until,
+    states,
+    futureStates,
+    failed,
+  });
   if (Math.abs(message.time - lastPaths) > 60000) {
     send({
       type: 'paths',

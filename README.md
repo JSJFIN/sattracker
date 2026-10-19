@@ -27,20 +27,20 @@ Without a key, the app opens in **Demo** mode. Demo uses ten bundled CelesTrak o
 
 - Drag the globe to orbit the camera; scroll or use `+` / `−` to zoom.
 - Choose **Add satellite** to search the local active-satellite catalogue by name, partial name or NORAD ID. A numeric NORAD ID can also be entered directly for objects outside the catalogue.
-- Click a satellite marker or a row in the watchlist to inspect it. **Follow satellite** keeps it centered; **Reset camera** returns to Earth.
-- Toggle orbits, labels, recent paths, sunlight and the geographic grid below the globe.
+- Click a satellite marker or a row in the watchlist to inspect it. Use a row's crosshair or **Center & follow satellite** to view it directly from above, keeping Earth centered and rotating the viewpoint with the satellite, in live mode and replay. Zoom remains available; stop following to rotate the camera freely; **Reset camera** returns to Earth.
+- Use **View controls** in the left sidebar for camera zoom/reset, orbits, labels, recent paths, sunlight and the geographic grid. History playback and follow status are there too, leaving the globe unobstructed.
 - Use each row's eye to show or hide a satellite; use its `×` to remove it. The watchlist is saved in this browser.
 - Earth and orbital distances use the same scale. Satellite markers are enlarged so they remain visible; they do not represent actual spacecraft size or attitude.
 
 ## Motion and API usage
 
-N2YO supplies **TLE orbital elements**. A browser worker runs SGP4/SDP4 twice per second; the renderer extrapolates position from velocity between worker updates. Earth rotation, sunlight and latitude/longitude calculations use the same UTC clock. New element sets are visually blended to avoid position jumps.
+N2YO supplies **TLE orbital elements**. A browser worker runs SGP4/SDP4 twice per second and calculates bracketing positions and velocities. The renderer uses cubic Hermite interpolation between them, including during accelerated or reverse playback. Earth rotation, sunlight, camera following and latitude/longitude calculations share the same simulation clock. New element sets are visually blended to avoid position jumps.
 
 The app currently uses only N2YO's `tle` endpoint, documented at **1,000 requests per rolling hour**. It never polls satellite positions for animation. Default cache lifetime is **6 hours**: 50 satellites need 50 initial fetches and about 200 fetches per day during continuous use. Selecting cached satellites, typing in search and opening another tab do not create duplicate upstream requests.
 
 The server:
 
-- Persists cached elements and request timestamps in `.data/tracker.sqlite`.
+- Persists cached elements, an append-only archive of every successful TLE fetch and its source response, and request timestamps in `.data/tracker.sqlite`.
 - Enforces a rolling budget of **800 attempted requests/hour**, counted before network access and retained through restarts.
 - Serializes and spaces upstream requests by at least 1.1 seconds; deduplicates concurrent requests for the same satellite.
 - Watches N2YO's reported transaction count and pauses when the configured budget is reached. HTTP 429 pauses upstream requests for one hour.
@@ -57,9 +57,28 @@ Optional `.env` settings:
 | `TLE_REFRESH_HOURS` | `6` | 1–24 |
 | `N2YO_HOURLY_BUDGET` | `800` | 1–900 |
 
+## History and replay
+
+Open **History & replay** in the left sidebar under **View controls**. Drag the timeline, enter a UTC date/time, or step backward/forward a minute. Play, pause, or choose a speed from −60× to 60×. **Return to live** restores the current time; forward playback also returns to live when it catches up, and reverse playback pauses at the beginning of saved history.
+
+Every successful N2YO fetch is retained as a separate, timestamped snapshot, even if its TLE is unchanged. Refreshing the latest cache never overwrites previous history. Each new snapshot also stores the successful source response (`info` and `tle`); credentials and request URLs are never archived. Cached reads do not create duplicates. Existing cached elements are automatically migrated into the archive on startup, without deleting or refetching them. Historical raw responses from before this upgrade cannot be recovered, but their cached element data is retained.
+
+For a requested time, replay uses each satellite's **last snapshot fetched at or before that time**. Satellites not yet recorded are hidden and marked “Not yet recorded”; the app never substitutes a later TLE and presents it as historical data. When playback crosses a saved snapshot boundary, it loads the corresponding element set automatically. Satellite positions, labels, Earth lighting, telemetry and camera following all use the replay clock.
+
+Replayed positions are reconstructed predictions from saved TLEs, rather than recordings of actual spacecraft telemetry. Storing the source elements allows arbitrary-time playback without saving millions of rendered positions. Replay reads only the local database and makes no additional N2YO requests. The normal live cache refresh can continue in the background while the app is open.
+
+The archive has no automatic expiration. Recording occurs when the running app fetches data; closing the app does not continue unattended collection. History predating the first saved fetch cannot be backfilled from N2YO's current-TLE endpoint. The local database and backups remain outside Git. To back up the archive yourself, stop the local server and copy the `.data/` directory.
+
+Local, read-only history endpoints:
+
+- `GET /api/history?ids=25544,20580` — available ranges and snapshot counts. Omitting `ids` lists all archived satellites.
+- `GET /api/history/elements?ids=25544,20580&at=<unix-milliseconds>` — elements known at that UTC instant, missing satellite IDs, and the time interval for which the result applies.
+
+Historical request timestamps are retained; only those within the rolling hour count toward the active quota.
+
 ## Search catalogue
 
-Name search uses a bundled **CelesTrak active-satellite catalogue**, initially containing 15,928 entries. It is independent of N2YO and consumes no N2YO requests. It is a dated snapshot, rather than a live list of every object in orbit. Display names for the ten starter satellites include familiar aliases such as “ISS” and “Hubble”.
+Name search uses a bundled **CelesTrak active-satellite catalogue**, initially containing 15,928 entries, supplemented with previously archived satellite names. It is independent of N2YO and consumes no N2YO requests. It is a dated snapshot, rather than a live list of every object in orbit. Display names for the ten starter satellites include familiar aliases such as “ISS” and “Hubble”.
 
 To update it manually (at most once a day):
 
@@ -79,7 +98,7 @@ npm start
 
 After building, `npm start` serves the app and API together at **http://127.0.0.1:3001**. Stop the development server first to release the API port.
 
-Tests cover rolling quotas through restarts, duplicate requests, stale-data fallback, upstream rate limits, credential loading, Alpha-5 IDs, the Vallado SGP4 reference case, orbital coordinates and short-term extrapolation error. Automated tests use mocked N2YO responses and consume no real API requests.
+Tests cover rolling quotas through restarts, duplicate requests, stale-data fallback, upstream rate limits, credential loading, Alpha-5 IDs, the Vallado SGP4 reference case, orbital coordinates, database migration, historical snapshot boundaries, pause/seek/reverse clocks, and interpolation error through 60× playback. Automated tests use mocked N2YO responses and consume no real API requests.
 
 ## Source layout
 
@@ -88,9 +107,11 @@ Tests cover rolling quotas through restarts, duplicate requests, stale-data fall
 | `src/App.tsx` | Watchlist, catalogue search, controls and telemetry |
 | `src/Scene.tsx` | Earth shader, atmosphere, orbits, markers and camera |
 | `src/engine.worker.ts` | Local orbital calculations |
+| `src/Timeline.tsx`, `src/useArchive.ts` | Historical playback controls and database reads |
+| `shared/clock.ts` | Simulation clock and orbit interpolation |
 | `shared/orbits.ts` | Propagation, units and coordinate conventions |
 | `server/n2yo.ts` | Cached N2YO client, validation and request scheduling |
-| `server/store.ts` | Persistent SQLite cache and rolling quota |
+| `server/store.ts` | Persistent SQLite cache, orbital history and rolling quota |
 
 API reference: https://www.n2yo.com/api/
 

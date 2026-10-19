@@ -4,11 +4,15 @@ import type {
   OrbitPath,
   SatelliteState,
   WorkerOutput,
+  SimulationClock,
 } from '../shared/types';
+import { simulationTime } from '../shared/clock';
 
 export interface EngineFrame {
   time: number;
+  until: number;
   states: Map<number, SatelliteState>;
+  futureStates: Map<number, SatelliteState>;
 }
 export interface OrbitEngine {
   frame: MutableRefObject<EngineFrame>;
@@ -19,12 +23,17 @@ export interface OrbitEngine {
 
 export function useOrbitEngine(
   elements: OrbitalElements[],
-  offset: number,
+  clock: SimulationClock,
 ): OrbitEngine {
   const worker = useRef<Worker | null>(null);
-  const offsetRef = useRef(offset);
-  offsetRef.current = offset;
-  const frame = useRef<EngineFrame>({ time: 0, states: new Map() });
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
+  const frame = useRef<EngineFrame>({
+    time: 0,
+    until: 0,
+    states: new Map(),
+    futureStates: new Map(),
+  });
   const [states, setStates] = useState<SatelliteState[]>([]);
   const [paths, setPaths] = useState<OrbitPath[]>([]);
   const [failed, setFailed] = useState<number[]>([]);
@@ -40,7 +49,11 @@ export function useOrbitEngine(
       if (message.type === 'states') {
         frame.current = {
           time: message.time,
+          until: message.until,
           states: new Map(message.states.map((state) => [state.id, state])),
+          futureStates: new Map(
+            message.futureStates.map((state) => [state.id, state]),
+          ),
         };
         setStates(message.states);
         setFailed(message.failed);
@@ -50,7 +63,8 @@ export function useOrbitEngine(
       () =>
         instance.postMessage({
           type: 'tick',
-          time: Date.now() + offsetRef.current,
+          time: simulationTime(clockRef.current),
+          rate: clockRef.current.rate,
         }),
       500,
     );
@@ -65,9 +79,10 @@ export function useOrbitEngine(
     worker.current?.postMessage({
       type: 'elements',
       elements,
-      time: Date.now() + offset,
+      time: simulationTime(clock),
+      rate: clock.rate,
     });
-  }, [elements, offset]);
+  }, [elements, clock]);
 
   return { frame, states, paths, failed };
 }

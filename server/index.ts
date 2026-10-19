@@ -41,7 +41,56 @@ app.use('/api', (_request, response, next) => {
   next();
 });
 app.get('/api/status', (_request, response) => response.json(service.status()));
-app.get('/api/catalog', (_request, response) => response.json(catalog));
+app.get('/api/catalog', (_request, response) => {
+  const satellites = new Map(catalog.satellites.map((item) => [item.id, item]));
+  for (const item of store.history(undefined, Date.now()).satellites) {
+    if (!satellites.has(item.id))
+      satellites.set(item.id, { id: item.id, name: item.name });
+  }
+  response.json({ ...catalog, satellites: [...satellites.values()] });
+});
+const parseIds = (raw: unknown): number[] | undefined => {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || !/^\d{1,9}(,\d{1,9})*$/.test(raw))
+    throw new Error();
+  const ids = [...new Set(raw.split(',').map(Number))];
+  if (ids.length > 50 || ids.some((id) => id < 1)) throw new Error();
+  return ids;
+};
+app.get('/api/history', (request, response) => {
+  try {
+    response.json(store.history(parseIds(request.query.ids), Date.now()));
+  } catch {
+    response
+      .status(400)
+      .json({
+        error: 'Supply up to 50 numeric NORAD IDs separated by commas.',
+      });
+  }
+});
+app.get('/api/history/elements', (request, response) => {
+  try {
+    const ids = parseIds(request.query.ids);
+    const at = Number(request.query.at);
+    if (
+      !ids ||
+      typeof request.query.at !== 'string' ||
+      !/^\d{1,16}$/.test(request.query.at) ||
+      !Number.isSafeInteger(at) ||
+      at < 0 ||
+      at > Date.now()
+    )
+      throw new Error();
+    response.json(store.historyAt(ids, at));
+  } catch {
+    response
+      .status(400)
+      .json({
+        error:
+          'Supply up to 50 NORAD IDs and a past UTC Unix timestamp in milliseconds.',
+      });
+  }
+});
 app.get('/api/satellites/:id', async (request, response) => {
   const raw = request.params.id;
   const id = Number(raw);

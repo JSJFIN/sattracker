@@ -223,7 +223,8 @@ export class N2yoService {
       source: 'n2yo',
       stale: false,
     };
-    this.store.put(satellite);
+    // Preserve every successful source response as well as the latest cache entry.
+    this.store.put(satellite, { info: data.info, tle: data.tle });
     return satellite;
   }
 }

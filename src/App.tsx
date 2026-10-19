@@ -28,16 +28,25 @@ import {
   Tag,
   Trash2,
   X,
+  History,
 } from 'lucide-react';
 import { CATALOG, COLORS, DEFAULT_IDS } from '../shared/catalog';
 import { epochFromRecord, parseElements } from '../shared/orbits';
-import type { OrbitalElements, SatelliteSelection } from '../shared/types';
+import type {
+  OrbitalElements,
+  SatelliteSelection,
+  SimulationClock,
+} from '../shared/types';
+import { simulationTime } from '../shared/clock';
 import demoRecords from './data/demo.json';
 import Scene, { type Layers } from './Scene';
 import { useOrbitEngine } from './useOrbitEngine';
 import { useTracker } from './useTracker';
+import { useArchive } from './useArchive';
+import Timeline from './Timeline';
 
 const DEMO_EPOCH = Date.UTC(2026, 9, 19, 0, 0, 0);
+const EMPTY_ELEMENTS: OrbitalElements[] = [];
 const demo: OrbitalElements[] = demoRecords.map((record) => ({
   ...record,
   epoch: epochFromRecord(parseElements(record)),
@@ -342,9 +351,11 @@ export default function App() {
   const [now, setNow] = useState(Date.now());
   const [clockOffset, setClockOffset] = useState(0);
   const [demoOffset] = useState(() => DEMO_EPOCH - Date.now());
+  const [replay, setReplay] = useState<SimulationClock | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const tracker = useTracker(selections, mode === 'live');
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
@@ -362,8 +373,26 @@ export default function App() {
       /* Session-only if storage is blocked. */
     }
   }, [selections]);
-  const offset = mode === 'demo' ? demoOffset : clockOffset;
-  const elements = useMemo(
+  const clock = useMemo<SimulationClock>(
+    () =>
+      mode === 'live' && replay
+        ? replay
+        : {
+            anchorTime: mode === 'demo' ? demoOffset : clockOffset,
+            anchorRealTime: 0,
+            rate: 1,
+          },
+    [mode, replay, demoOffset, clockOffset],
+  );
+  const renderTime = Date.now();
+  const displayTime = simulationTime(clock, renderTime);
+  const liveTime = renderTime + clockOffset;
+  const archive = useArchive(
+    selections.map((item) => item.id),
+    mode === 'live' && replay !== null,
+    displayTime,
+  );
+  const liveElements = useMemo(
     () =>
       selections.flatMap(({ id }) => {
         const record =
@@ -374,7 +403,34 @@ export default function App() {
       }),
     [selections, mode, tracker.records],
   );
-  const engine = useOrbitEngine(elements, offset);
+  const elements =
+    mode === 'live' && replay
+      ? (archive.elements ?? EMPTY_ELEMENTS)
+      : liveElements;
+  const engine = useOrbitEngine(elements, clock);
+  useEffect(() => {
+    if (!replay || mode !== 'live') return;
+    if (replay.rate > 0 && displayTime >= liveTime) setReplay(null);
+    const start = archive.summary?.start;
+    if (replay.rate < 0 && start != null && displayTime <= start) {
+      setReplay({ anchorTime: start, anchorRealTime: Date.now(), rate: 0 });
+    }
+  }, [displayTime, liveTime, replay, mode, archive.summary?.start]);
+  const seekTime = (time: number, rate = 0) => {
+    if (time >= liveTime) {
+      setReplay(null);
+      return;
+    }
+    setReplay({ anchorTime: time, anchorRealTime: Date.now(), rate });
+  };
+  const changeRate = (rate: number) => {
+    if (replay)
+      setReplay({
+        anchorTime: simulationTime(replay),
+        anchorRealTime: Date.now(),
+        rate,
+      });
+  };
   const selectedElement = elements.find((element) => element.id === selected);
   const selectedState = engine.states.find((state) => state.id === selected);
   const selectedSelection = selections.find(
@@ -383,10 +439,13 @@ export default function App() {
   const selectedInfo = selected ? starter.get(selected) : undefined;
   const selectedError = selected ? tracker.errors[selected] : undefined;
   const epochAge = selectedElement
-    ? Math.max(0, (now + offset - selectedElement.epoch) / 3600000)
+    ? Math.max(0, (displayTime - selectedElement.epoch) / 3600000)
     : 0;
   const oldElements =
-    selectedElement && (selectedElement.stale || epochAge > 72);
+    selectedElement &&
+    (selectedElement.stale ||
+      displayTime >= selectedElement.nextRefreshAt ||
+      epochAge > 72);
   const filtered = selections.filter(({ id }) =>
     `${friendlyName(id, elements.find((item) => item.id === id)?.name)} ${id}`
       .toLowerCase()
@@ -444,8 +503,10 @@ export default function App() {
           </span>
         </a>
         <div className="header-clock">
-          <span className={`status-dot ${mode === 'demo' ? 'amber' : ''}`} />
-          {new Date(now + offset)
+          <span
+            className={`status-dot ${mode === 'demo' || replay ? 'amber' : ''}`}
+          />
+          {new Date(displayTime)
             .toLocaleDateString('en-GB', {
               timeZone: 'UTC',
               day: '2-digit',
@@ -454,7 +515,7 @@ export default function App() {
             })
             .toUpperCase()}
           <span className="clock-divider" />
-          {new Date(now + offset).toLocaleTimeString('en-GB', {
+          {new Date(displayTime).toLocaleTimeString('en-GB', {
             timeZone: 'UTC',
             hour12: false,
           })}
@@ -465,10 +526,15 @@ export default function App() {
             {(['live', 'demo'] as const).map((value) => (
               <button
                 key={value}
-                className={mode === value ? 'active' : ''}
+                className={
+                  mode === value && !(value === 'live' && replay)
+                    ? 'active'
+                    : ''
+                }
                 onClick={() => {
                   initializedMode.current = true;
                   setMode(value);
+                  setReplay(null);
                   setFollow(false);
                 }}
               >
@@ -502,6 +568,11 @@ export default function App() {
             <X size={16} />
           </button>
           <h3>A little closer to space.</h3>
+          <p>
+            Use a satellite's crosshair to look directly down at it, with Earth
+            centered beneath it. History & replay reconstructs saved orbits at a
+            chosen UTC time; earlier, unrecorded satellites are hidden.
+          </p>
           <p>
             Positions are predicted locally from orbital elements. Drag to
             rotate, scroll to zoom, and select a satellite to inspect or follow
@@ -558,7 +629,7 @@ export default function App() {
           </label>
           <div className="list-heading">
             <span>SATELLITE</span>
-            <span>VISIBILITY</span>
+            <span>ACTIONS</span>
           </div>
           <div className="satellite-list">
             {filtered.map((selection) => {
@@ -566,9 +637,10 @@ export default function App() {
               const state = engine.states.find(
                 (item) => item.id === selection.id,
               );
-              const failed = mode === 'live' && tracker.errors[selection.id];
+              const failed =
+                mode === 'live' && !replay && tracker.errors[selection.id];
               const loading =
-                mode === 'live' && tracker.loading.has(selection.id);
+                mode === 'live' && !replay && tracker.loading.has(selection.id);
               const unavailableDemo = mode === 'demo' && !element;
               return (
                 <div
@@ -596,10 +668,22 @@ export default function App() {
                         ) : unavailableDemo ? (
                           'Available in live mode'
                         ) : (
-                          `#${selection.id} · ${state ? `${format(state.altitude)} km` : 'Awaiting elements'}`
+                          `#${selection.id} · ${state ? `${format(state.altitude)} km` : replay && archive.missingIds.includes(selection.id) ? 'Not yet recorded' : 'Awaiting elements'}`
                         )}
                       </small>
                     </span>
+                  </button>
+                  <button
+                    className={`row-follow ${follow && selected === selection.id ? 'active' : ''}`}
+                    aria-label={`Center & follow ${friendlyName(selection.id, element?.name)}`}
+                    title="Center & follow satellite"
+                    aria-pressed={follow && selected === selection.id}
+                    onClick={() => {
+                      selectSatellite(selection.id);
+                      setFollow(true);
+                    }}
+                  >
+                    <Crosshair size={15} />
                   </button>
                   <button
                     className="row-visibility"
@@ -648,6 +732,181 @@ export default function App() {
               </div>
             )}
           </div>
+          <section className="view-controls" aria-label="Globe controls">
+            <h2>View controls</h2>
+            {selectedSelection && (
+              <button
+                className={`follow-button ${follow ? 'following' : ''}`}
+                disabled={!selectedState || !selectedSelection.visible}
+                onClick={() => setFollow((value) => !value)}
+              >
+                <Crosshair size={16} />
+                {follow
+                  ? 'Stop following'
+                  : `Follow ${friendlyName(selectedSelection.id, selectedElement?.name)}`}
+                <ChevronRight size={14} />
+              </button>
+            )}
+            {(tracker.serverError ||
+              (mode === 'live' &&
+                tracker.status &&
+                !tracker.status.configured)) && (
+              <div className="connection-notice">
+                <Info size={17} />
+                <span>
+                  {tracker.serverError ||
+                    'Add your N2YO_API_KEY to .env. It will be picked up automatically.'}
+                </span>
+                <button
+                  onClick={() => {
+                    initializedMode.current = true;
+                    setMode('demo');
+                  }}
+                >
+                  View demo
+                </button>
+              </div>
+            )}
+            {mode === 'demo' && (
+              <div className="demo-notice">
+                <span className="status-dot amber" />
+                DEMO SNAPSHOT · 19 OCT 2026{' '}
+                <span>Not current satellite positions</span>
+              </div>
+            )}
+            {mode === 'live' && replay && (
+              <div className="replay-notice" role="status">
+                <History size={13} />
+                <span>
+                  {archive.error ||
+                    (archive.loading
+                      ? 'Loading saved orbital elements…'
+                      : archive.missingIds.length
+                        ? `${archive.missingIds.length} selected satellite(s) not yet recorded at this time`
+                        : `History replay · ${replay.rate === 0 ? 'paused' : `${replay.rate}× playback`}`)}
+                </span>
+                <button onClick={() => setReplay(null)}>Return to live</button>
+              </div>
+            )}
+            <div className="camera-tools">
+              <button
+                className="icon-button"
+                aria-label="Zoom in"
+                title="Zoom in"
+                onClick={() =>
+                  setZoom((previous) => ({
+                    sequence: previous.sequence + 1,
+                    factor: 0.8,
+                  }))
+                }
+              >
+                <Plus size={18} />
+              </button>
+              <button
+                className="icon-button"
+                aria-label="Zoom out"
+                title="Zoom out"
+                onClick={() =>
+                  setZoom((previous) => ({
+                    sequence: previous.sequence + 1,
+                    factor: 1.25,
+                  }))
+                }
+              >
+                <Minus size={18} />
+              </button>
+              <span />
+              <button
+                className="icon-button"
+                aria-label="Reset camera"
+                title="Reset view"
+                onClick={() => {
+                  setFollow(false);
+                  setReset((value) => value + 1);
+                }}
+              >
+                <Maximize2 size={17} />
+              </button>
+            </div>
+            {follow && selectedState && (
+              <div className="follow-badge">
+                <Crosshair size={13} />
+                Following{' '}
+                {selected ? friendlyName(selected, selectedElement?.name) : ''}
+                <button
+                  onClick={() => setFollow(false)}
+                  aria-label="Stop following"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
+            <div className="scene-bottom">
+              {mode === 'live' && (
+                <>
+                  <button
+                    className={`history-toggle ${historyOpen || replay ? 'active' : ''}`}
+                    onClick={() => setHistoryOpen((value) => !value)}
+                    aria-expanded={historyOpen}
+                    aria-controls="history-playback"
+                  >
+                    <History size={14} />
+                    History & replay
+                  </button>
+                  {historyOpen && (
+                    <Timeline
+                      summary={archive.summary}
+                      error={archive.summaryError}
+                      time={displayTime}
+                      liveTime={liveTime}
+                      replay={replay}
+                      onSeek={seekTime}
+                      onRate={changeRate}
+                      onLive={() => setReplay(null)}
+                    />
+                  )}
+                </>
+              )}
+              <div className="view-caption">
+                <span className="earth-dot" />
+                EARTH TO SCALE<span className="caption-divider">/</span>MARKERS
+                ENLARGED
+              </div>
+              <div className="layer-toolbar" aria-label="Globe layers">
+                {(
+                  [
+                    { key: 'orbits', label: 'Orbits', icon: Orbit },
+                    { key: 'labels', label: 'Labels', icon: Tag },
+                    { key: 'trails', label: 'Trails', icon: Activity },
+                    { key: 'sunlight', label: 'Sunlight', icon: Sun },
+                    { key: 'grid', label: 'Grid', icon: Grid2X2 },
+                  ] as const
+                ).map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    className={layers[key] ? 'active' : ''}
+                    aria-pressed={layers[key]}
+                    onClick={() => toggleLayer(key)}
+                  >
+                    <Icon size={15} />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="gesture-hint">
+                {follow ? (
+                  <>
+                    View locked above satellite <span>·</span> Scroll to zoom
+                  </>
+                ) : (
+                  <>
+                    Drag to orbit <span>·</span> Scroll to zoom <span>·</span>{' '}
+                    Click to explore
+                  </>
+                )}
+              </p>
+            </div>
+          </section>
           <div className="api-card">
             <div className="api-heading">
               <span>
@@ -693,7 +952,7 @@ export default function App() {
             engine={engine}
             selected={selected}
             onSelect={selectSatellite}
-            offset={offset}
+            clock={clock}
             layers={layers}
             follow={follow}
             reset={reset}
@@ -707,120 +966,10 @@ export default function App() {
             <p>
               {visibleCount} satellites visible <span>·</span>{' '}
               {mode === 'live'
-                ? 'Real-time prediction'
+                ? replay
+                  ? 'History replay · saved orbital elements'
+                  : 'Real-time prediction'
                 : 'Recorded orbital snapshot'}
-            </p>
-          </div>
-          {(tracker.serverError ||
-            (mode === 'live' &&
-              tracker.status &&
-              !tracker.status.configured)) && (
-            <div className="connection-notice">
-              <Info size={17} />
-              <span>
-                {tracker.serverError ||
-                  'Add your N2YO_API_KEY to .env. It will be picked up automatically.'}
-              </span>
-              <button
-                onClick={() => {
-                  initializedMode.current = true;
-                  setMode('demo');
-                }}
-              >
-                View demo
-              </button>
-            </div>
-          )}
-          {mode === 'demo' && (
-            <div className="demo-notice">
-              <span className="status-dot amber" />
-              DEMO SNAPSHOT · 19 OCT 2026{' '}
-              <span>Not current satellite positions</span>
-            </div>
-          )}
-          <div className="camera-tools">
-            <button
-              className="icon-button"
-              aria-label="Zoom in"
-              title="Zoom in"
-              onClick={() =>
-                setZoom((previous) => ({
-                  sequence: previous.sequence + 1,
-                  factor: 0.8,
-                }))
-              }
-            >
-              <Plus size={18} />
-            </button>
-            <button
-              className="icon-button"
-              aria-label="Zoom out"
-              title="Zoom out"
-              onClick={() =>
-                setZoom((previous) => ({
-                  sequence: previous.sequence + 1,
-                  factor: 1.25,
-                }))
-              }
-            >
-              <Minus size={18} />
-            </button>
-            <span />
-            <button
-              className="icon-button"
-              aria-label="Reset camera"
-              title="Reset view"
-              onClick={() => {
-                setFollow(false);
-                setReset((value) => value + 1);
-              }}
-            >
-              <Maximize2 size={17} />
-            </button>
-          </div>
-          {follow && (
-            <div className="follow-badge">
-              <Crosshair size={13} />
-              Following{' '}
-              {selected ? friendlyName(selected, selectedElement?.name) : ''}
-              <button
-                onClick={() => setFollow(false)}
-                aria-label="Stop following"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
-          <div className="scene-bottom">
-            <div className="view-caption">
-              <span className="earth-dot" />
-              EARTH TO SCALE<span className="caption-divider">/</span>MARKERS
-              ENLARGED
-            </div>
-            <div className="layer-toolbar" aria-label="Globe layers">
-              {(
-                [
-                  { key: 'orbits', label: 'Orbits', icon: Orbit },
-                  { key: 'labels', label: 'Labels', icon: Tag },
-                  { key: 'trails', label: 'Trails', icon: Activity },
-                  { key: 'sunlight', label: 'Sunlight', icon: Sun },
-                  { key: 'grid', label: 'Grid', icon: Grid2X2 },
-                ] as const
-              ).map(({ key, label, icon: Icon }) => (
-                <button
-                  key={key}
-                  className={layers[key] ? 'active' : ''}
-                  aria-pressed={layers[key]}
-                  onClick={() => toggleLayer(key)}
-                >
-                  <Icon size={15} />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-            <p className="gesture-hint">
-              Drag to orbit <span>·</span> Scroll to zoom <span>·</span> Click
-              to explore
             </p>
           </div>
         </section>
@@ -858,19 +1007,17 @@ export default function App() {
                 </p>
                 <span className="norad-tag">NORAD {selectedSelection.id}</span>
               </div>
-              <button
-                className={`follow-button ${follow ? 'following' : ''}`}
-                disabled={!selectedState || !selectedSelection.visible}
-                onClick={() => setFollow((value) => !value)}
-              >
-                <Crosshair size={16} />
-                {follow ? 'Following satellite' : 'Follow satellite'}
-                <ChevronRight size={14} />
-              </button>
-              {selectedError && mode === 'live' && (
+
+              {selectedError && mode === 'live' && !replay && (
                 <div className="data-warning">
                   {selectedError}
                   <button onClick={() => void tracker.sync()}>Retry</button>
+                </div>
+              )}
+              {replay && archive.missingIds.includes(selectedSelection.id) && (
+                <div className="data-warning">
+                  This satellite had not been recorded at the selected time.
+                  Choose a later time or return to live.
                 </div>
               )}
               {engine.failed.includes(selectedSelection.id) && (
@@ -943,11 +1090,13 @@ export default function App() {
                   <span className={`source-tag ${oldElements ? 'warn' : ''}`}>
                     {mode === 'demo'
                       ? 'SNAPSHOT'
-                      : oldElements
-                        ? 'STALE'
-                        : selectedElement
-                          ? 'CACHED'
-                          : 'PENDING'}
+                      : replay
+                        ? 'HISTORY'
+                        : oldElements
+                          ? 'STALE'
+                          : selectedElement
+                            ? 'CACHED'
+                            : 'PENDING'}
                   </span>
                 </div>
                 <dl>
@@ -970,14 +1119,18 @@ export default function App() {
                     <dd>
                       {mode === 'demo'
                         ? 'CelesTrak snapshot'
-                        : 'N2YO · SGP4 prediction'}
+                        : replay
+                          ? 'Saved N2YO · SGP4'
+                          : 'N2YO · SGP4 prediction'}
                     </dd>
                   </div>
                 </dl>
                 {oldElements && (
                   <p className="old-warning">
                     {selectedElement.warning ||
-                      'These elements are over 72 hours old. Prediction accuracy may be reduced.'}
+                      (epochAge > 72
+                        ? 'These elements are over 72 hours old. Prediction accuracy may be reduced.'
+                        : 'A scheduled refresh was not available at this time. Positions use the last saved orbital elements.')}
                   </p>
                 )}
               </div>

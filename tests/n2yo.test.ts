@@ -91,6 +91,7 @@ test('concurrent requests are deduplicated and cached without additional upstrea
     assert.equal((await service.get(25544)).id, 25544);
     assert.equal(calls, 1);
     assert.equal(service.status().used, 1);
+    assert.equal(store.history([25544], Date.now()).satellites[0].snapshots, 1);
   } finally {
     store.close();
   }
@@ -182,6 +183,44 @@ test('missing key does not spend budget; adding it enables requests immediately'
     key = 'new-local-key';
     assert.equal((await service.get(25544)).id, 25544);
     assert.equal(service.status().used, 1);
+  } finally {
+    store.close();
+  }
+});
+
+test('successful refreshes preserve each source response without archiving credentials', async () => {
+  const store = new Store(':memory:');
+  let now = 1792388745000;
+  let calls = 0;
+  const service = new N2yoService(store, {
+    ...baseOptions,
+    now: () => now,
+    fetch: async () => {
+      calls++;
+      return response();
+    },
+  });
+  try {
+    const first = await service.get(25544);
+    now = first.nextRefreshAt;
+    await service.get(25544);
+    assert.equal(calls, 2);
+    assert.equal(store.history([25544], now).satellites[0].snapshots, 2);
+    const rows = store.db
+      .prepare('SELECT payload FROM element_history ORDER BY fetched_at')
+      .all() as { payload: string }[];
+    assert.equal(rows.length, 2);
+    assert.deepEqual(JSON.parse(rows[0].payload), body);
+    assert.ok(
+      rows.every(
+        (row) =>
+          !row.payload.includes('test-key') && !row.payload.includes('apiKey='),
+      ),
+    );
+    assert.equal(
+      store.historyAt([25544], first.fetchedAt).elements[0].fetchedAt,
+      first.fetchedAt,
+    );
   } finally {
     store.close();
   }

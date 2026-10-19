@@ -41,9 +41,45 @@ export interface OrbitPath {
   id: number;
   points: [number, number, number][];
 }
+export interface SimulationClock {
+  anchorTime: number;
+  anchorRealTime: number;
+  rate: number;
+}
+export interface SatelliteHistory {
+  id: number;
+  name: string;
+  firstFetchedAt: number;
+  lastFetchedAt: number;
+  snapshots: number;
+}
+export interface HistorySummary {
+  start: number | null;
+  end: number;
+  satellites: SatelliteHistory[];
+}
+export interface HistoryFrame {
+  at: number;
+  validFrom: number;
+  validUntil: number | null;
+  elements: OrbitalElements[];
+  missingIds: number[];
+}
 export type WorkerInput =
-  | { type: 'elements'; elements: OrbitalElements[]; time: number }
-  | { type: 'tick'; time: number };
+  | {
+      type: 'elements';
+      elements: OrbitalElements[];
+      time: number;
+      rate: number;
+    }
+  | { type: 'tick'; time: number; rate: number };
 export type WorkerOutput =
-  | { type: 'states'; time: number; states: SatelliteState[]; failed: number[] }
+  | {
+      type: 'states';
+      time: number;
+      until: number;
+      states: SatelliteState[];
+      futureStates: SatelliteState[];
+      failed: number[];
+    }
   | { type: 'paths'; paths: OrbitPath[] };
