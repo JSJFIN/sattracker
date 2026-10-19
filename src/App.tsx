@@ -737,6 +737,7 @@ export default function App() {
               const loading =
                 mode === 'live' && !replay && tracker.loading.has(selection.id);
               const unavailableDemo = mode === 'demo' && !element;
+              const isFollowing = follow && selected === selection.id;
               return (
                 <div
                   key={selection.id}
@@ -769,11 +770,19 @@ export default function App() {
                     </span>
                   </button>
                   <button
-                    className={`row-follow ${follow && selected === selection.id ? 'active' : ''}`}
-                    aria-label={`Center & follow ${friendlyName(selection.id, element?.name)}`}
-                    title="Center & follow satellite"
-                    aria-pressed={follow && selected === selection.id}
+                    className={`row-follow ${isFollowing ? 'active' : ''}`}
+                    aria-label={`${isFollowing ? 'Stop following' : 'Center & follow'} ${friendlyName(selection.id, element?.name)}`}
+                    title={
+                      isFollowing
+                        ? 'Stop following satellite'
+                        : 'Center & follow satellite'
+                    }
+                    aria-pressed={isFollowing}
                     onClick={() => {
+                      if (isFollowing) {
+                        setCameraMode('orbit');
+                        return;
+                      }
                       selectSatellite(selection.id);
                       setCameraMode('follow');
                     }}
