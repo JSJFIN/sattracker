@@ -201,6 +201,8 @@ function Satellite({
   const group = useRef<Group>(null!);
   const core = useRef<Group>(null!);
   const target = useMemo(() => new Vector3(), []);
+  const labelProjection = useMemo(() => new Vector3(), []);
+  const labelCameraPosition = useMemo(() => new Vector3(), []);
   const correction = useRef(new Vector3());
   const lastElements = useRef(element.line1 + element.line2);
   const ready = useRef(false);
@@ -265,8 +267,24 @@ function Satellite({
       </group>
       {layers.labels && (
         <Html
-          position={[0.025, 0.035, 0]}
-          center
+          position={[0, 0, 0]}
+          calculatePosition={(object, camera, size) => {
+            labelProjection.setFromMatrixPosition(object.matrixWorld);
+            const depth = -labelCameraPosition
+              .copy(labelProjection)
+              .applyMatrix4(camera.matrixWorldInverse).z;
+            labelProjection.project(camera);
+            // Offset in screen space so camera rotation never moves the label above the marker.
+            const ringRadius =
+              (selected ? 0.034 : 0.022) * (core.current?.scale.x ?? 1);
+            const radiusPixels =
+              (ringRadius * size.height * camera.projectionMatrix.elements[5]) /
+              (2 * Math.max(depth, 0.0001));
+            return [
+              ((labelProjection.x + 1) * size.width) / 2 + radiusPixels + 8,
+              ((1 - labelProjection.y) * size.height) / 2,
+            ];
+          }}
           occlude={[earthRef]}
           zIndexRange={[4, 0]}
           style={{ pointerEvents: 'none' }}
