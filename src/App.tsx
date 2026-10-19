@@ -11,6 +11,8 @@ import {
   ArrowUpRight,
   Check,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Crosshair,
   Eye,
   EyeOff,
@@ -345,6 +347,23 @@ export default function App() {
   const initializedMode = useRef(false);
   const [filter, setFilter] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [controlsMinimized, setControlsMinimized] = useState(() => {
+    try {
+      return localStorage.getItem('orbit-view-controls-minimized') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'orbit-view-controls-minimized',
+        String(controlsMinimized),
+      );
+    } catch {
+      // Keep the toggle usable when browser storage is unavailable.
+    }
+  }, [controlsMinimized]);
   const [layers, setLayers] = useState<Layers>({
     orbits: true,
     labels: true,
@@ -835,274 +854,307 @@ export default function App() {
                 : 'Recorded orbital snapshot'}
             </p>
           </div>
-          <section className="view-controls" aria-label="Globe controls">
-            <h2>View controls</h2>
-            {selectedSelection && (
-              <div className="satellite-camera-modes">
+          <section
+            className={`view-controls ${controlsMinimized ? 'minimized' : ''}`}
+            aria-label="Globe controls"
+          >
+            <h2 className="view-controls-heading">
+              <button
+                aria-label={
+                  controlsMinimized
+                    ? 'Expand view controls'
+                    : 'Minimize view controls'
+                }
+                aria-expanded={!controlsMinimized}
+                aria-controls="view-controls-content"
+                onClick={() => setControlsMinimized((previous) => !previous)}
+              >
+                View controls
+                {controlsMinimized ? (
+                  <ChevronUp size={16} />
+                ) : (
+                  <ChevronDown size={16} />
+                )}
+              </button>
+            </h2>
+            <div
+              id="view-controls-content"
+              className="view-controls-body"
+              hidden={controlsMinimized}
+            >
+              {selectedSelection && (
+                <div className="satellite-camera-modes">
+                  <button
+                    className={`follow-button ${follow ? 'following' : ''}`}
+                    disabled={!selectedState || !selectedSelection.visible}
+                    aria-pressed={follow}
+                    onClick={() => setCameraMode(follow ? 'orbit' : 'follow')}
+                  >
+                    <Crosshair size={16} />
+                    {follow
+                      ? 'Stop following'
+                      : `Follow ${friendlyName(selectedSelection.id, selectedElement?.name)}`}
+                    <ChevronRight size={14} />
+                  </button>
+                  <button
+                    className={`follow-button onboard-button ${onboard ? 'following' : ''}`}
+                    disabled={
+                      !onboard &&
+                      (!selectedState ||
+                        !selectedElement ||
+                        !selectedSelection.visible)
+                    }
+                    aria-pressed={onboard}
+                    onClick={() => setCameraMode(onboard ? 'orbit' : 'onboard')}
+                  >
+                    <Telescope size={16} />
+                    {onboard ? 'Return to Earth view' : 'Go onboard'}
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
+              {onboard && (
+                <div className="onboard-controls">
+                  <p role="status">
+                    <Telescope size={13} /> Onboard{' '}
+                    {selected
+                      ? friendlyName(selected, selectedElement?.name)
+                      : ''}
+                  </p>
+                  {(!selectedState || !selectedElement) && (
+                    <p>Waiting for orbital data…</p>
+                  )}
+                  <div aria-label="Onboard look direction">
+                    <button onClick={() => lookOnboard('forward')}>
+                      Look ahead
+                    </button>
+                    <button onClick={() => lookOnboard('earth')}>Earth</button>
+                    <button onClick={() => lookOnboard('space')}>Space</button>
+                  </div>
+                  <small>
+                    Drag to look around. Scroll to change field of view.
+                  </small>
+                  <small>Simulated orbital viewpoint.</small>
+                </div>
+              )}
+              {(tracker.serverError ||
+                (mode === 'live' &&
+                  tracker.status &&
+                  !tracker.status.configured)) && (
+                <div className="connection-notice">
+                  <Info size={17} />
+                  <span>
+                    {tracker.serverError ||
+                      'Add your N2YO_API_KEY to .env. It will be picked up automatically.'}
+                  </span>
+                  <button
+                    onClick={() => {
+                      initializedMode.current = true;
+                      setMode('demo');
+                    }}
+                  >
+                    View demo
+                  </button>
+                </div>
+              )}
+              {mode === 'demo' && (
+                <div className="demo-notice">
+                  <span className="status-dot amber" />
+                  DEMO SNAPSHOT · 19 OCT 2026{' '}
+                  <span>Not current satellite positions</span>
+                </div>
+              )}
+              {mode === 'live' && replay && (
+                <div className="replay-notice" role="status">
+                  <History size={13} />
+                  <span>
+                    {archive.error ||
+                      (archive.loading
+                        ? 'Loading saved orbital elements…'
+                        : archive.missingIds.length
+                          ? `${archive.missingIds.length} selected satellite(s) not yet recorded at this time`
+                          : `History replay · ${replay.rate === 0 ? 'paused' : `${replay.rate}× playback`}`)}
+                  </span>
+                  <button onClick={() => setReplay(null)}>
+                    Return to live
+                  </button>
+                </div>
+              )}
+              <div className="camera-tools">
                 <button
-                  className={`follow-button ${follow ? 'following' : ''}`}
-                  disabled={!selectedState || !selectedSelection.visible}
-                  aria-pressed={follow}
-                  onClick={() => setCameraMode(follow ? 'orbit' : 'follow')}
+                  className="icon-button"
+                  aria-label="Zoom in"
+                  title="Zoom in"
+                  onClick={() =>
+                    setZoom((previous) => ({
+                      sequence: previous.sequence + 1,
+                      factor: 0.8,
+                    }))
+                  }
                 >
-                  <Crosshair size={16} />
-                  {follow
-                    ? 'Stop following'
-                    : `Follow ${friendlyName(selectedSelection.id, selectedElement?.name)}`}
-                  <ChevronRight size={14} />
+                  <Plus size={18} />
                 </button>
                 <button
-                  className={`follow-button onboard-button ${onboard ? 'following' : ''}`}
-                  disabled={
-                    !onboard &&
-                    (!selectedState ||
-                      !selectedElement ||
-                      !selectedSelection.visible)
+                  className="icon-button"
+                  aria-label="Zoom out"
+                  title="Zoom out"
+                  onClick={() =>
+                    setZoom((previous) => ({
+                      sequence: previous.sequence + 1,
+                      factor: 1.25,
+                    }))
                   }
-                  aria-pressed={onboard}
-                  onClick={() => setCameraMode(onboard ? 'orbit' : 'onboard')}
                 >
-                  <Telescope size={16} />
-                  {onboard ? 'Return to Earth view' : 'Go onboard'}
-                  <ChevronRight size={14} />
+                  <Minus size={18} />
+                </button>
+                <span />
+                <button
+                  className="icon-button"
+                  aria-label="Reset camera"
+                  title="Reset view"
+                  onClick={() => {
+                    setCameraMode('orbit');
+                    setReset((value) => value + 1);
+                  }}
+                >
+                  <Maximize2 size={17} />
                 </button>
               </div>
-            )}
-            {onboard && (
-              <div className="onboard-controls">
-                <p role="status">
-                  <Telescope size={13} /> Onboard{' '}
+              <fieldset className="earth-appearance">
+                <legend>Earth style</legend>
+                <div className="earth-style-options">
+                  {EARTH_STYLES.map((style) => (
+                    <button
+                      key={style.id}
+                      className={appearance.style === style.id ? 'active' : ''}
+                      aria-pressed={appearance.style === style.id}
+                      onClick={() =>
+                        setAppearance((previous) => ({
+                          ...previous,
+                          style: style.id,
+                        }))
+                      }
+                    >
+                      <span
+                        className={`earth-swatch earth-swatch-${style.id}`}
+                      />
+                      {style.name}
+                    </button>
+                  ))}
+                </div>
+                <div className="earth-map-overlays">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={appearance.borders}
+                      onChange={(event) =>
+                        setAppearance((previous) => ({
+                          ...previous,
+                          borders: event.target.checked,
+                        }))
+                      }
+                    />
+                    Country borders
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={appearance.names}
+                      onChange={(event) =>
+                        setAppearance((previous) => ({
+                          ...previous,
+                          names: event.target.checked,
+                        }))
+                      }
+                    />
+                    Country names
+                  </label>
+                </div>
+              </fieldset>
+              {follow && selectedState && (
+                <div className="follow-badge">
+                  <Crosshair size={13} />
+                  Following{' '}
                   {selected
                     ? friendlyName(selected, selectedElement?.name)
                     : ''}
-                </p>
-                {(!selectedState || !selectedElement) && (
-                  <p>Waiting for orbital data…</p>
-                )}
-                <div aria-label="Onboard look direction">
-                  <button onClick={() => lookOnboard('forward')}>
-                    Look ahead
+                  <button
+                    onClick={() => setCameraMode('orbit')}
+                    aria-label="Stop following"
+                  >
+                    <X size={12} />
                   </button>
-                  <button onClick={() => lookOnboard('earth')}>Earth</button>
-                  <button onClick={() => lookOnboard('space')}>Space</button>
                 </div>
-                <small>
-                  Drag to look around. Scroll to change field of view.
-                </small>
-                <small>Simulated orbital viewpoint.</small>
-              </div>
-            )}
-            {(tracker.serverError ||
-              (mode === 'live' &&
-                tracker.status &&
-                !tracker.status.configured)) && (
-              <div className="connection-notice">
-                <Info size={17} />
-                <span>
-                  {tracker.serverError ||
-                    'Add your N2YO_API_KEY to .env. It will be picked up automatically.'}
-                </span>
-                <button
-                  onClick={() => {
-                    initializedMode.current = true;
-                    setMode('demo');
-                  }}
-                >
-                  View demo
-                </button>
-              </div>
-            )}
-            {mode === 'demo' && (
-              <div className="demo-notice">
-                <span className="status-dot amber" />
-                DEMO SNAPSHOT · 19 OCT 2026{' '}
-                <span>Not current satellite positions</span>
-              </div>
-            )}
-            {mode === 'live' && replay && (
-              <div className="replay-notice" role="status">
-                <History size={13} />
-                <span>
-                  {archive.error ||
-                    (archive.loading
-                      ? 'Loading saved orbital elements…'
-                      : archive.missingIds.length
-                        ? `${archive.missingIds.length} selected satellite(s) not yet recorded at this time`
-                        : `History replay · ${replay.rate === 0 ? 'paused' : `${replay.rate}× playback`}`)}
-                </span>
-                <button onClick={() => setReplay(null)}>Return to live</button>
-              </div>
-            )}
-            <div className="camera-tools">
-              <button
-                className="icon-button"
-                aria-label="Zoom in"
-                title="Zoom in"
-                onClick={() =>
-                  setZoom((previous) => ({
-                    sequence: previous.sequence + 1,
-                    factor: 0.8,
-                  }))
-                }
-              >
-                <Plus size={18} />
-              </button>
-              <button
-                className="icon-button"
-                aria-label="Zoom out"
-                title="Zoom out"
-                onClick={() =>
-                  setZoom((previous) => ({
-                    sequence: previous.sequence + 1,
-                    factor: 1.25,
-                  }))
-                }
-              >
-                <Minus size={18} />
-              </button>
-              <span />
-              <button
-                className="icon-button"
-                aria-label="Reset camera"
-                title="Reset view"
-                onClick={() => {
-                  setCameraMode('orbit');
-                  setReset((value) => value + 1);
-                }}
-              >
-                <Maximize2 size={17} />
-              </button>
-            </div>
-            <fieldset className="earth-appearance">
-              <legend>Earth style</legend>
-              <div className="earth-style-options">
-                {EARTH_STYLES.map((style) => (
-                  <button
-                    key={style.id}
-                    className={appearance.style === style.id ? 'active' : ''}
-                    aria-pressed={appearance.style === style.id}
-                    onClick={() =>
-                      setAppearance((previous) => ({
-                        ...previous,
-                        style: style.id,
-                      }))
-                    }
-                  >
-                    <span className={`earth-swatch earth-swatch-${style.id}`} />
-                    {style.name}
-                  </button>
-                ))}
-              </div>
-              <div className="earth-map-overlays">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={appearance.borders}
-                    onChange={(event) =>
-                      setAppearance((previous) => ({
-                        ...previous,
-                        borders: event.target.checked,
-                      }))
-                    }
-                  />
-                  Country borders
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={appearance.names}
-                    onChange={(event) =>
-                      setAppearance((previous) => ({
-                        ...previous,
-                        names: event.target.checked,
-                      }))
-                    }
-                  />
-                  Country names
-                </label>
-              </div>
-            </fieldset>
-            {follow && selectedState && (
-              <div className="follow-badge">
-                <Crosshair size={13} />
-                Following{' '}
-                {selected ? friendlyName(selected, selectedElement?.name) : ''}
-                <button
-                  onClick={() => setCameraMode('orbit')}
-                  aria-label="Stop following"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            )}
-            <div className="scene-bottom">
-              {mode === 'live' && (
-                <>
-                  <button
-                    className={`history-toggle ${historyOpen || replay ? 'active' : ''}`}
-                    onClick={() => setHistoryOpen((value) => !value)}
-                    aria-expanded={historyOpen}
-                    aria-controls="history-playback"
-                  >
-                    <History size={14} />
-                    History & replay
-                  </button>
-                  {historyOpen && (
-                    <Timeline
-                      summary={archive.summary}
-                      error={archive.summaryError}
-                      time={displayTime}
-                      liveTime={liveTime}
-                      replay={replay}
-                      onSeek={seekTime}
-                      onRate={changeRate}
-                      onLive={() => setReplay(null)}
-                    />
-                  )}
-                </>
               )}
-              <div className="view-caption">
-                <span className="earth-dot" />
-                EARTH TO SCALE<span className="caption-divider">/</span>MARKERS
-                ENLARGED
-              </div>
-              <div className="layer-toolbar" aria-label="Globe layers">
-                {(
-                  [
-                    { key: 'orbits', label: 'Orbits', icon: Orbit },
-                    { key: 'labels', label: 'Labels', icon: Tag },
-                    { key: 'trails', label: 'Trails', icon: Activity },
-                    { key: 'sunlight', label: 'Sunlight', icon: Sun },
-                    { key: 'grid', label: 'Grid', icon: Grid2X2 },
-                  ] as const
-                ).map(({ key, label, icon: Icon }) => (
-                  <button
-                    key={key}
-                    className={layers[key] ? 'active' : ''}
-                    aria-pressed={layers[key]}
-                    onClick={() => toggleLayer(key)}
-                  >
-                    <Icon size={15} />
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="gesture-hint">
-                {onboard ? (
+              <div className="scene-bottom">
+                {mode === 'live' && (
                   <>
-                    Drag / arrow keys to look <span>·</span> Esc to exit
-                  </>
-                ) : follow ? (
-                  <>
-                    View locked above satellite <span>·</span> Scroll to zoom
-                  </>
-                ) : (
-                  <>
-                    Drag to orbit <span>·</span> Scroll to zoom <span>·</span>{' '}
-                    Click to explore
+                    <button
+                      className={`history-toggle ${historyOpen || replay ? 'active' : ''}`}
+                      onClick={() => setHistoryOpen((value) => !value)}
+                      aria-expanded={historyOpen}
+                      aria-controls="history-playback"
+                    >
+                      <History size={14} />
+                      History & replay
+                    </button>
+                    {historyOpen && (
+                      <Timeline
+                        summary={archive.summary}
+                        error={archive.summaryError}
+                        time={displayTime}
+                        liveTime={liveTime}
+                        replay={replay}
+                        onSeek={seekTime}
+                        onRate={changeRate}
+                        onLive={() => setReplay(null)}
+                      />
+                    )}
                   </>
                 )}
-              </p>
+                <div className="view-caption">
+                  <span className="earth-dot" />
+                  EARTH TO SCALE<span className="caption-divider">/</span>
+                  MARKERS ENLARGED
+                </div>
+                <div className="layer-toolbar" aria-label="Globe layers">
+                  {(
+                    [
+                      { key: 'orbits', label: 'Orbits', icon: Orbit },
+                      { key: 'labels', label: 'Labels', icon: Tag },
+                      { key: 'trails', label: 'Trails', icon: Activity },
+                      { key: 'sunlight', label: 'Sunlight', icon: Sun },
+                      { key: 'grid', label: 'Grid', icon: Grid2X2 },
+                    ] as const
+                  ).map(({ key, label, icon: Icon }) => (
+                    <button
+                      key={key}
+                      className={layers[key] ? 'active' : ''}
+                      aria-pressed={layers[key]}
+                      onClick={() => toggleLayer(key)}
+                    >
+                      <Icon size={15} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="gesture-hint">
+                  {onboard ? (
+                    <>
+                      Drag / arrow keys to look <span>·</span> Esc to exit
+                    </>
+                  ) : follow ? (
+                    <>
+                      View locked above satellite <span>·</span> Scroll to zoom
+                    </>
+                  ) : (
+                    <>
+                      Drag to orbit <span>·</span> Scroll to zoom <span>·</span>{' '}
+                      Click to explore
+                    </>
+                  )}
+                </p>
+              </div>
             </div>
           </section>
         </section>

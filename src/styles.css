@@ -2061,6 +2061,40 @@ button svg {
   font-size: 12px;
   font-weight: 400;
 }
+.view-controls.minimized {
+  width: fit-content;
+  overflow: visible;
+}
+.view-controls .view-controls-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  background: #101721;
+}
+.view-controls-heading button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.view-controls-heading button:hover {
+  color: #a7ebde;
+}
+.view-controls-body {
+  margin-top: 12px;
+}
+.view-controls-body[hidden] {
+  display: none;
+}
 .earth-appearance {
   min-width: 0;
   margin: 14px 0 0;
