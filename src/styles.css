@@ -2034,24 +2034,25 @@ button svg {
   }
 }
 
-/* Keep every globe control in the left sidebar rather than over the Earth. */
-.watchlist {
+/* Keep globe controls along the left edge inside the orbital view. */
+.view-controls {
+  position: absolute;
+  z-index: 6;
+  left: 24px;
+  bottom: 24px;
+  width: 250px;
+  max-width: calc(100% - 48px);
+  max-height: calc(100% - 150px);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  border: 1px solid #ffffff14;
+  border-radius: 9px;
+  background: #101721ed;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 35px #0004;
   scrollbar-width: thin;
   scrollbar-color: #ffffff16 transparent;
-}
-.watchlist .satellite-list {
-  flex: 0 0 auto;
-  max-height: min(30vh, 360px);
-}
-.watchlist .api-card {
-  flex-shrink: 0;
-}
-.view-controls {
-  flex: 0 0 auto;
-  margin-top: 16px;
-  padding-top: 17px;
-  border-top: 1px solid var(--border);
 }
 .view-controls h2 {
   margin: 0 0 12px;
@@ -2188,12 +2189,12 @@ button svg {
   line-height: 1.8;
 }
 @media (max-width: 600px) {
-  .watchlist {
-    max-height: none;
-    overflow: visible;
-  }
-  .watchlist .satellite-list {
-    max-height: 300px;
+  .view-controls {
+    left: 12px;
+    bottom: 12px;
+    width: 230px;
+    max-width: calc(100% - 24px);
+    padding: 12px;
   }
   .view-controls .scene-bottom {
     gap: 12px;

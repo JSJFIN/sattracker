@@ -732,6 +732,72 @@ export default function App() {
               </div>
             )}
           </div>
+
+          <div className="api-card">
+            <div className="api-heading">
+              <span>
+                <ShieldCheck size={14} /> API budget
+              </span>
+              <strong>
+                {tracker.status?.used ?? 0}
+                <small> / {tracker.status?.budget ?? 800}</small>
+              </strong>
+            </div>
+            <div className="budget-track">
+              <span
+                style={{
+                  width: `${Math.min(100, ((tracker.status?.used ?? 0) / (tracker.status?.budget ?? 800)) * 100)}%`,
+                }}
+              />
+            </div>
+            <p>
+              {paused
+                ? 'Requests paused · cached orbits continue'
+                : 'Requests in the last hour · shared across tabs'}
+            </p>
+            <div className="cache-note">
+              <span
+                className={`status-dot ${mode === 'demo' ? 'amber' : tracker.status?.configured ? '' : 'muted'}`}
+              />
+              {mode === 'demo'
+                ? 'Demo · no N2YO requests'
+                : tracker.status?.configured
+                  ? `N2YO connected · ${tracker.status.refreshHours}h cache`
+                  : 'Waiting for N2YO API key'}
+            </div>
+          </div>
+        </aside>
+
+        <section
+          className="globe-area"
+          aria-label="Interactive 3D satellite globe"
+        >
+          <Scene
+            selections={selections}
+            elements={elements}
+            engine={engine}
+            selected={selected}
+            onSelect={selectSatellite}
+            clock={clock}
+            layers={layers}
+            follow={follow}
+            reset={reset}
+            zoom={zoom}
+          />
+          <div className="scene-heading">
+            <span className="eyebrow">ORBITAL VIEW</span>
+            <h2>
+              Earth & its companions<span>.</span>
+            </h2>
+            <p>
+              {visibleCount} satellites visible <span>·</span>{' '}
+              {mode === 'live'
+                ? replay
+                  ? 'History replay · saved orbital elements'
+                  : 'Real-time prediction'
+                : 'Recorded orbital snapshot'}
+            </p>
+          </div>
           <section className="view-controls" aria-label="Globe controls">
             <h2>View controls</h2>
             {selectedSelection && (
@@ -907,71 +973,6 @@ export default function App() {
               </p>
             </div>
           </section>
-          <div className="api-card">
-            <div className="api-heading">
-              <span>
-                <ShieldCheck size={14} /> API budget
-              </span>
-              <strong>
-                {tracker.status?.used ?? 0}
-                <small> / {tracker.status?.budget ?? 800}</small>
-              </strong>
-            </div>
-            <div className="budget-track">
-              <span
-                style={{
-                  width: `${Math.min(100, ((tracker.status?.used ?? 0) / (tracker.status?.budget ?? 800)) * 100)}%`,
-                }}
-              />
-            </div>
-            <p>
-              {paused
-                ? 'Requests paused · cached orbits continue'
-                : 'Requests in the last hour · shared across tabs'}
-            </p>
-            <div className="cache-note">
-              <span
-                className={`status-dot ${mode === 'demo' ? 'amber' : tracker.status?.configured ? '' : 'muted'}`}
-              />
-              {mode === 'demo'
-                ? 'Demo · no N2YO requests'
-                : tracker.status?.configured
-                  ? `N2YO connected · ${tracker.status.refreshHours}h cache`
-                  : 'Waiting for N2YO API key'}
-            </div>
-          </div>
-        </aside>
-
-        <section
-          className="globe-area"
-          aria-label="Interactive 3D satellite globe"
-        >
-          <Scene
-            selections={selections}
-            elements={elements}
-            engine={engine}
-            selected={selected}
-            onSelect={selectSatellite}
-            clock={clock}
-            layers={layers}
-            follow={follow}
-            reset={reset}
-            zoom={zoom}
-          />
-          <div className="scene-heading">
-            <span className="eyebrow">ORBITAL VIEW</span>
-            <h2>
-              Earth & its companions<span>.</span>
-            </h2>
-            <p>
-              {visibleCount} satellites visible <span>·</span>{' '}
-              {mode === 'live'
-                ? replay
-                  ? 'History replay · saved orbital elements'
-                  : 'Real-time prediction'
-                : 'Recorded orbital snapshot'}
-            </p>
-          </div>
         </section>
 
         <aside className="details panel">

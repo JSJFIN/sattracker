@@ -28,7 +28,7 @@ Without a key, the app opens in **Demo** mode. Demo uses ten bundled CelesTrak o
 - Drag the globe to orbit the camera; scroll or use `+` / `−` to zoom.
 - Choose **Add satellite** to search the local active-satellite catalogue by name, partial name or NORAD ID. A numeric NORAD ID can also be entered directly for objects outside the catalogue.
 - Click a satellite marker or a row in the watchlist to inspect it. Use a row's crosshair or **Center & follow satellite** to view it directly from above, keeping Earth centered and rotating the viewpoint with the satellite, in live mode and replay. Zoom remains available; stop following to rotate the camera freely; **Reset camera** returns to Earth.
-- Use **View controls** in the left sidebar for camera zoom/reset, orbits, labels, recent paths, sunlight and the geographic grid. History playback and follow status are there too, leaving the globe unobstructed.
+- Use **View controls** inside the orbital view along its left edge for camera zoom/reset, orbits, labels, recent paths, sunlight and the geographic grid. History playback and follow status are there too, leaving the globe unobstructed.
 - Use each row's eye to show or hide a satellite; use its `×` to remove it. The watchlist is saved in this browser.
 - Earth and orbital distances use the same scale. Satellite markers are enlarged so they remain visible; they do not represent actual spacecraft size or attitude.
 
@@ -59,7 +59,7 @@ Optional `.env` settings:
 
 ## History and replay
 
-Open **History & replay** in the left sidebar under **View controls**. Drag the timeline, enter a UTC date/time, or step backward/forward a minute. Play, pause, or choose a speed from −60× to 60×. **Return to live** restores the current time; forward playback also returns to live when it catches up, and reverse playback pauses at the beginning of saved history.
+Open **History & replay** along the left edge of the orbital view under **View controls**. Drag the timeline, enter a UTC date/time, or step backward/forward a minute. Play, pause, or choose a speed from −60× to 60×. **Return to live** restores the current time; forward playback also returns to live when it catches up, and reverse playback pauses at the beginning of saved history.
 
 Every successful N2YO fetch is retained as a separate, timestamped snapshot, even if its TLE is unchanged. Refreshing the latest cache never overwrites previous history. Each new snapshot also stores the successful source response (`info` and `tle`); credentials and request URLs are never archived. Cached reads do not create duplicates. Existing cached elements are automatically migrated into the archive on startup, without deleting or refetching them. Historical raw responses from before this upgrade cannot be recovered, but their cached element data is retained.
 
