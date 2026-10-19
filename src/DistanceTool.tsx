@@ -93,6 +93,29 @@ export default function DistanceTool({
             )}
           </output>
           <small>Predicted straight-line separation in 3D.</small>
+          <dl className="distance-altitude">
+            <dt>Altitude difference</dt>
+            <dd>
+              <output
+                htmlFor="distance-satellite-a distance-satellite-b"
+                aria-label="Satellite altitude difference"
+                aria-live="off"
+              >
+                {reading
+                  ? `${Math.abs(reading.altitudeDeltaKm).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} km`
+                  : '—'}
+              </output>
+            </dd>
+          </dl>
+          {reading && (
+            <small>
+              {Math.abs(reading.altitudeDeltaKm) < 0.005
+                ? 'Same altitude to displayed precision.'
+                : reading.altitudeDeltaKm > 0
+                  ? 'Satellite B is higher than A.'
+                  : 'Satellite A is higher than B.'}
+            </small>
+          )}
           <p className="distance-status" role="status">
             {pair.some((id) => id === null)
               ? 'Choose two different satellites.'

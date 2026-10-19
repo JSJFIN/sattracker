@@ -1,4 +1,5 @@
 import { EARTH_RADIUS_KM } from './orbits';
+import { eciToGeodetic, gstime } from 'satellite.js';
 import type { SimulationClock } from './types';
 
 export type DistancePair = [number | null, number | null];
@@ -7,6 +8,29 @@ export interface DistanceReading {
   clock: SimulationClock;
   kilometers: number;
   earthBlocked: boolean;
+  altitudeDeltaKm: number;
+}
+
+// Signed B minus A, using the same geodetic height convention as telemetry.
+// Undo the scene's inertial-axis mapping before converting to Earth altitude.
+export function altitudeDifferenceKm(
+  a: [number, number, number],
+  b: [number, number, number],
+  time: number,
+): number | null {
+  if (![...a, ...b, time].every(Number.isFinite)) return null;
+  const sidereal = gstime(new Date(time));
+  const height = (position: [number, number, number]) =>
+    eciToGeodetic(
+      {
+        x: position[0] * EARTH_RADIUS_KM,
+        y: -position[2] * EARTH_RADIUS_KM,
+        z: position[1] * EARTH_RADIUS_KM,
+      },
+      sidereal,
+    ).height;
+  const delta = height(b) - height(a);
+  return Number.isFinite(delta) ? delta : null;
 }
 
 // Positions use Earth radii in the same inertial frame. Measure the actual 3D

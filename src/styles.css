@@ -2461,6 +2461,26 @@ button svg {
 .distance-value span {
   font-size: 12px;
 }
+.distance-altitude {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #ffffff14;
+}
+.distance-altitude dt {
+  color: #a3b3c3;
+  font-size: 10px;
+}
+.distance-altitude dd {
+  margin: 0;
+  color: #d2dce6;
+  font-family: var(--mono);
+  font-size: 13px;
+}
 .distance-status {
   margin: 9px 0;
   color: #b6c4d2;

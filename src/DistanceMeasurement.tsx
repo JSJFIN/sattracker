@@ -11,6 +11,7 @@ import type {
 import { interpolatedPosition, simulationTime } from '../shared/clock';
 import {
   satelliteSeparation,
+  altitudeDifferenceKm,
   type DistancePair,
   type DistanceReading,
 } from '../shared/distance';
@@ -99,9 +100,15 @@ export default function DistanceMeasurement({
     const now = performance.now();
     if (now - lastPublished.current >= 250) {
       lastPublished.current = now;
+      const altitudeDeltaKm = a && b ? altitudeDifferenceKm(a, b, time) : null;
       onReading(
-        separation
-          ? { ids: pair as [number, number], clock, ...separation }
+        separation && altitudeDeltaKm !== null
+          ? {
+              ids: pair as [number, number],
+              clock,
+              ...separation,
+              altitudeDeltaKm,
+            }
           : null,
       );
     }

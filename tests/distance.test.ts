@@ -2,14 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createElement } from 'react';
 import { create } from '@react-three/test-renderer';
+import { ecfToEci, geodeticToEcf, gstime } from 'satellite.js';
 import { Vector3, type InterleavedBufferAttribute } from 'three';
 import type { Line2 } from 'three-stdlib';
 import {
   satelliteSeparation,
+  altitudeDifferenceKm,
   type DistancePair,
   type DistanceReading,
 } from '../shared/distance';
-import { EARTH_RADIUS_KM, parseElements, stateAt } from '../shared/orbits';
+import {
+  EARTH_RADIUS_KM,
+  parseElements,
+  stateAt,
+  toScene,
+} from '../shared/orbits';
 import type {
   OrbitalElements,
   SatelliteSelection,
@@ -33,6 +40,32 @@ test('satellite distance measures the 3D segment in kilometers, including altitu
   assert.deepEqual(satelliteSeparation(a, b), satelliteSeparation(b, a));
   assert.equal(satelliteSeparation(a, a)!.kilometers, 0);
   assert.equal(satelliteSeparation(a, [NaN, 0, 0]), null);
+});
+
+test('altitude difference uses geodetic heights at different latitudes and identifies the higher satellite', () => {
+  const time = Date.UTC(2026, 9, 19);
+  const sidereal = gstime(new Date(time));
+  const position = (latitude: number, height: number) =>
+    toScene(
+      ecfToEci(
+        geodeticToEcf({
+          latitude: (latitude * Math.PI) / 180,
+          longitude: -1.2,
+          height,
+        }),
+        sidereal,
+      ),
+    );
+  const a = position(0, 400);
+  const sameAltitude = position(75, 400);
+  const higher = position(-60, 650);
+  assert.ok(
+    Math.abs(altitudeDifferenceKm(a, sameAltitude, time)!) < 1e-8,
+    'equal heights at different latitudes must not be mistaken for a difference in Earth-center radii',
+  );
+  assert.ok(Math.abs(altitudeDifferenceKm(a, higher, time)! - 250) < 1e-8);
+  assert.ok(Math.abs(altitudeDifferenceKm(higher, a, time)! + 250) < 1e-8);
+  assert.equal(altitudeDifferenceKm(a, [NaN, 0, 0], time), null);
 });
 
 test('line of sight checks the finite segment against Earth without changing the measured separation', () => {
@@ -126,6 +159,11 @@ test('measurement follows rendered endpoints, handles hidden and missing satelli
     const geometry = line.geometry;
     assert.equal(line.visible, true);
     assert.ok(Math.abs(last()!.kilometers - 0.2 * EARTH_RADIUS_KM) < 1e-9);
+    const initialAltitudeDelta = last()!.altitudeDeltaKm;
+    assert.ok(
+      initialAltitudeDelta > 0,
+      'altitude difference uses the same rendered endpoints',
+    );
     const end = geometry.getAttribute(
       'instanceEnd',
     ) as InterleavedBufferAttribute;
@@ -136,6 +174,10 @@ test('measurement follows rendered endpoints, handles hidden and missing satelli
     assert.equal(line.geometry, geometry, 'geometry is reused while moving');
     assert.ok(Math.abs(end.getY(0) - 0.3) < 1e-7);
     assert.ok(Math.abs(last()!.kilometers - 0.3 * EARTH_RADIUS_KM) < 1e-9);
+    assert.ok(
+      last()!.altitudeDeltaKm > initialAltitudeDelta,
+      'the altitude difference updates as the satellites move',
+    );
 
     props.showLine = false;
     await renderer.update(createElement(DistanceMeasurement, props));
