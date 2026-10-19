@@ -1,0 +1,479 @@
+import {
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  Component,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import {
+  Billboard,
+  Html,
+  Line,
+  OrbitControls,
+  useTexture,
+} from '@react-three/drei';
+import {
+  AdditiveBlending,
+  BackSide,
+  Group,
+  Mesh,
+  ShaderMaterial,
+  SRGBColorSpace,
+  Vector3,
+} from 'three';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
+import { gstime, jday, sunPos } from 'satellite.js';
+import type { OrbitalElements, SatelliteSelection } from '../shared/types';
+import type { OrbitEngine } from './useOrbitEngine';
+
+export interface Layers {
+  orbits: boolean;
+  labels: boolean;
+  trails: boolean;
+  sunlight: boolean;
+  grid: boolean;
+}
+interface Props {
+  selections: SatelliteSelection[];
+  elements: OrbitalElements[];
+  engine: OrbitEngine;
+  selected: number | null;
+  onSelect: (id: number) => void;
+  offset: number;
+  layers: Layers;
+  follow: boolean;
+  reset: number;
+  zoom: { sequence: number; factor: number };
+}
+
+const vertex = `varying vec2 vUv; varying vec3 vNormal; varying vec3 vPosition;
+void main() { vUv=uv; vec4 world=modelMatrix*vec4(position,1.); vPosition=world.xyz;
+vNormal=normalize(mat3(modelMatrix)*normal); gl_Position=projectionMatrix*viewMatrix*world; }`;
+const earthFragment = `uniform sampler2D dayMap; uniform vec3 sunDirection; uniform float sunlight;
+varying vec2 vUv; varying vec3 vNormal; varying vec3 vPosition;
+void main() { vec3 day=texture2D(dayMap,vUv).rgb; float light=dot(normalize(vNormal),sunDirection);
+float intensity=mix(.82,.055+.945*smoothstep(-.16,.85,light),sunlight);
+gl_FragColor=vec4(day*intensity,1.);
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
+}`;
+const atmosphereFragment = `uniform vec3 sunDirection; varying vec3 vNormal; varying vec3 vPosition;
+void main(){vec3 viewDirection=normalize(cameraPosition-vPosition);
+float rim=pow(max(0.,1.-abs(dot(normalize(vNormal),viewDirection))),4.);
+float light=.3+.7*max(0.,dot(normalize(vNormal),sunDirection));
+gl_FragColor=vec4(vec3(.19,.50,.85)*light,rim*.47);
+#include <colorspace_fragment>
+}`;
+
+function Earth({
+  offset,
+  layers,
+  earthRef,
+}: Pick<Props, 'offset' | 'layers'> & { earthRef: RefObject<Mesh> }) {
+  const group = useRef<Group>(null!);
+  const surface = useRef<ShaderMaterial>(null!);
+  const atmosphere = useRef<ShaderMaterial>(null!);
+  const dayMap = useTexture('/textures/earth-day.jpg');
+  dayMap.colorSpace = SRGBColorSpace;
+  dayMap.anisotropy = 8;
+  const uniforms = useMemo(
+    () => ({
+      dayMap: { value: dayMap },
+      sunDirection: { value: new Vector3(1, 0.2, 1).normalize() },
+      sunlight: { value: 1 },
+    }),
+    [dayMap],
+  );
+  const atmosphereUniforms = useMemo(
+    () => ({ sunDirection: { value: new Vector3(1, 0, 1).normalize() } }),
+    [],
+  );
+  useFrame(() => {
+    const time = new Date(Date.now() + offset);
+    group.current.rotation.y = gstime(time);
+    const sun = sunPos(jday(time));
+    const direction = new Vector3(
+      sun.rsun[0],
+      sun.rsun[2],
+      -sun.rsun[1],
+    ).normalize();
+    surface.current.uniforms.sunDirection.value.copy(direction);
+    surface.current.uniforms.sunlight.value = layers.sunlight ? 1 : 0;
+    atmosphere.current.uniforms.sunDirection.value.copy(direction);
+  });
+  return (
+    <>
+      <group ref={group}>
+        <mesh ref={earthRef}>
+          <sphereGeometry args={[1, 96, 64]} />
+          <shaderMaterial
+            ref={surface}
+            vertexShader={vertex}
+            fragmentShader={earthFragment}
+            uniforms={uniforms}
+          />
+        </mesh>
+        {layers.grid && (
+          <mesh>
+            <sphereGeometry args={[1.002, 36, 18]} />
+            <meshBasicMaterial
+              color="#91cfdf"
+              wireframe
+              transparent
+              opacity={0.065}
+              depthWrite={false}
+            />
+          </mesh>
+        )}
+      </group>
+      <mesh>
+        <sphereGeometry args={[1.035, 64, 48]} />
+        <shaderMaterial
+          ref={atmosphere}
+          vertexShader={vertex}
+          fragmentShader={atmosphereFragment}
+          uniforms={atmosphereUniforms}
+          transparent
+          side={BackSide}
+          blending={AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+    </>
+  );
+}
+
+function Starfield() {
+  const positions = useMemo(() => {
+    const values = new Float32Array(2000 * 3);
+    let seed = 48271;
+    const random = () =>
+      ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+    for (let i = 0; i < 2000; i++) {
+      const angle = random() * Math.PI * 2;
+      const z = random() * 2 - 1;
+      const radius = 60 + random() * 30;
+      values[i * 3] = Math.sqrt(1 - z * z) * Math.cos(angle) * radius;
+      values[i * 3 + 1] = z * radius;
+      values[i * 3 + 2] = Math.sqrt(1 - z * z) * Math.sin(angle) * radius;
+    }
+    return values;
+  }, []);
+  return (
+    <points>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+      </bufferGeometry>
+      <pointsMaterial
+        size={0.065}
+        color="#b3c3d9"
+        transparent
+        opacity={0.55}
+        sizeAttenuation
+        depthWrite={false}
+      />
+    </points>
+  );
+}
+
+function Satellite({
+  selection,
+  element,
+  engine,
+  offset,
+  selected,
+  layers,
+  onSelect,
+  earthRef,
+}: {
+  selection: SatelliteSelection;
+  element: OrbitalElements;
+  engine: OrbitEngine;
+  offset: number;
+  selected: boolean;
+  layers: Layers;
+  onSelect: () => void;
+  earthRef: RefObject<Mesh>;
+}) {
+  const group = useRef<Group>(null!);
+  const core = useRef<Group>(null!);
+  const target = useMemo(() => new Vector3(), []);
+  const correction = useRef(new Vector3());
+  const lastElements = useRef(element.line1 + element.line2);
+  const ready = useRef(false);
+  const { camera } = useThree();
+  useFrame((_, delta) => {
+    const frame = engine.frame.current;
+    const state = frame.states.get(selection.id);
+    group.current.visible = Boolean(state) && selection.visible;
+    if (!state) return;
+    const dt = Math.min(
+      2,
+      Math.max(-1, (Date.now() + offset - frame.time) / 1000),
+    );
+    target
+      .set(...state.position)
+      .addScaledVector(new Vector3(...state.velocity), dt);
+    const key = element.line1 + element.line2;
+    if (key !== lastElements.current && ready.current)
+      correction.current.copy(group.current.position).sub(target);
+    lastElements.current = key;
+    correction.current.multiplyScalar(Math.exp(-delta * 2));
+    group.current.position.copy(target).add(correction.current);
+    // A minimum screen-sized marker keeps physically tiny satellites discoverable.
+    const scale = Math.min(
+      3,
+      Math.max(0.55, camera.position.distanceTo(target) * 0.3),
+    );
+    core.current.scale.setScalar(scale);
+    ready.current = true;
+  });
+  return (
+    <group ref={group}>
+      <group ref={core}>
+        <mesh
+          onClick={(event) => {
+            event.stopPropagation();
+            onSelect();
+          }}
+          onPointerOver={() => {
+            document.body.style.cursor = 'pointer';
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = '';
+          }}
+        >
+          <sphereGeometry args={[selected ? 0.018 : 0.012, 12, 8]} />
+          <meshBasicMaterial color={selection.color} />
+        </mesh>
+        <Billboard>
+          <mesh>
+            <ringGeometry
+              args={[selected ? 0.031 : 0.021, selected ? 0.034 : 0.022, 40]}
+            />
+            <meshBasicMaterial
+              color={selection.color}
+              transparent
+              opacity={selected ? 0.8 : 0.32}
+              depthWrite={false}
+            />
+          </mesh>
+        </Billboard>
+      </group>
+      {layers.labels && (
+        <Html
+          position={[0.025, 0.035, 0]}
+          center
+          occlude={[earthRef]}
+          zIndexRange={[4, 0]}
+          style={{ pointerEvents: 'none' }}
+        >
+          <span
+            className={`sat-label ${selected ? 'selected' : ''}`}
+            style={{ borderColor: selection.color, color: selection.color }}
+          >
+            {element.name.replace('SPACE STATION', 'ISS')}
+          </span>
+        </Html>
+      )}
+    </group>
+  );
+}
+
+function CameraRig({
+  engine,
+  selected,
+  follow,
+  offset,
+  reset,
+  zoom,
+}: Pick<
+  Props,
+  'engine' | 'selected' | 'follow' | 'offset' | 'reset' | 'zoom'
+>) {
+  const controls = useRef<OrbitControlsImpl>(null!);
+  const { camera } = useThree();
+  const previousTarget = useRef(new Vector3());
+  const wasFollowing = useRef(false);
+  useEffect(() => {
+    controls.current.target.set(0, 0, 0);
+    const sun = sunPos(jday(new Date(Date.now() + offset)));
+    const direction = new Vector3(
+      sun.rsun[0],
+      sun.rsun[2],
+      -sun.rsun[1],
+    ).normalize();
+    direction.applyAxisAngle(new Vector3(0, 1, 0), Math.PI / 3);
+    direction.y += 0.45;
+    camera.position.copy(direction.normalize().multiplyScalar(4.75));
+    camera.lookAt(0, 0, 0);
+    controls.current.update();
+    previousTarget.current.set(0, 0, 0);
+    wasFollowing.current = false;
+  }, [reset, camera]);
+  useEffect(() => {
+    if (!zoom.sequence) return;
+    const center = controls.current.target;
+    const distance = camera.position
+      .clone()
+      .sub(center)
+      .multiplyScalar(zoom.factor);
+    if (distance.length() < 1.15) distance.setLength(1.15);
+    if (distance.length() > 22) distance.setLength(22);
+    camera.position.copy(center).add(distance);
+    controls.current.update();
+  }, [zoom, camera]);
+  useFrame((_, delta) => {
+    const state = selected
+      ? engine.frame.current.states.get(selected)
+      : undefined;
+    if (follow && state) {
+      const dt = Math.min(
+        2,
+        Math.max(0, (Date.now() + offset - engine.frame.current.time) / 1000),
+      );
+      const next = new Vector3(...state.position).addScaledVector(
+        new Vector3(...state.velocity),
+        dt,
+      );
+      const center = controls.current.target
+        .clone()
+        .lerp(next, 1 - Math.exp(-delta * 3));
+      const translation = center.clone().sub(controls.current.target);
+      camera.position.add(translation);
+      controls.current.target.copy(center);
+      previousTarget.current.copy(center);
+      wasFollowing.current = true;
+    } else if (wasFollowing.current) {
+      controls.current.target.lerp(new Vector3(), 1 - Math.exp(-delta * 3));
+      if (controls.current.target.length() < 0.001)
+        wasFollowing.current = false;
+    }
+    if (camera.position.length() < 1.04) camera.position.setLength(1.04);
+    controls.current.update();
+  });
+  return (
+    <OrbitControls
+      ref={controls}
+      makeDefault
+      enableDamping
+      dampingFactor={0.065}
+      enablePan={false}
+      minDistance={1.15}
+      maxDistance={22}
+      rotateSpeed={0.55}
+      zoomSpeed={0.7}
+    />
+  );
+}
+
+function OrbitalScene(props: Props) {
+  const { engine, selections, elements, selected, layers } = props;
+  const earthRef = useRef<Mesh>(null!);
+  const visible = new Set(
+    selections
+      .filter((selection) => selection.visible)
+      .map((selection) => selection.id),
+  );
+  return (
+    <>
+      <color attach="background" args={['#080c13']} />
+      <Starfield />
+      <Suspense fallback={null}>
+        <Earth offset={props.offset} layers={layers} earthRef={earthRef} />
+      </Suspense>
+      {engine.paths
+        .filter((path) => visible.has(path.id) && path.points.length > 1)
+        .map((path) => {
+          const color = selections.find(
+            (selection) => selection.id === path.id,
+          )!.color;
+          const state = engine.frame.current.states.get(path.id);
+          return (
+            <group key={path.id}>
+              {layers.orbits && (
+                <Line
+                  points={path.points}
+                  color={color}
+                  transparent
+                  opacity={path.id === selected ? 0.65 : 0.2}
+                  lineWidth={path.id === selected ? 1.25 : 0.7}
+                />
+              )}
+              {layers.trails && state && (
+                <Line
+                  points={[...path.points.slice(0, 31), state.position]}
+                  color={color}
+                  transparent
+                  opacity={path.id === selected ? 0.9 : 0.5}
+                  lineWidth={2}
+                />
+              )}
+            </group>
+          );
+        })}
+      {selections
+        .filter((selection) => visible.has(selection.id))
+        .map((selection) => {
+          const element = elements.find(
+            (element) => element.id === selection.id,
+          );
+          return (
+            element && (
+              <Satellite
+                key={selection.id}
+                selection={selection}
+                element={element}
+                engine={engine}
+                offset={props.offset}
+                selected={selected === selection.id}
+                layers={layers}
+                earthRef={earthRef}
+                onSelect={() => props.onSelect(selection.id)}
+              />
+            )
+          );
+        })}
+      <CameraRig {...props} />
+    </>
+  );
+}
+
+class SceneBoundary extends Component<
+  { children: ReactNode },
+  { error: boolean }
+> {
+  state = { error: false };
+  static getDerivedStateFromError() {
+    return { error: true };
+  }
+  render() {
+    if (this.state.error)
+      return (
+        <div className="scene-error">
+          <strong>The 3D view could not start.</strong>
+          <p>
+            Enable WebGL / hardware acceleration in your browser, then reload.
+          </p>
+        </div>
+      );
+    return this.props.children;
+  }
+}
+
+export default function Scene(props: Props) {
+  return (
+    <SceneBoundary>
+      <Canvas
+        camera={{ position: [2.6, 1.5, 3.7], fov: 36, near: 0.005, far: 200 }}
+        dpr={[1, 2]}
+        gl={{ antialias: true, alpha: false }}
+      >
+        <OrbitalScene {...props} />
+      </Canvas>
+    </SceneBoundary>
+  );
+}
