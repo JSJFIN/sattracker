@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useCallback,
   type CSSProperties,
 } from 'react';
 import {
@@ -29,6 +30,7 @@ import {
   Trash2,
   X,
   History,
+  Telescope,
 } from 'lucide-react';
 import { CATALOG, COLORS, DEFAULT_IDS } from '../shared/catalog';
 import { epochFromRecord, parseElements } from '../shared/orbits';
@@ -38,6 +40,7 @@ import type {
   SimulationClock,
 } from '../shared/types';
 import { simulationTime } from '../shared/clock';
+import type { CameraMode, LookCommand, OnboardLook } from '../shared/camera';
 import demoRecords from './data/demo.json';
 import Scene, { type Layers } from './Scene';
 import { useOrbitEngine } from './useOrbitEngine';
@@ -349,7 +352,16 @@ export default function App() {
     sunlight: true,
     grid: false,
   });
-  const [follow, setFollow] = useState(false);
+  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const follow = cameraMode === 'follow';
+  const onboard = cameraMode === 'onboard';
+  const [look, setLook] = useState<LookCommand>({
+    sequence: 0,
+    direction: 'forward',
+  });
+  const leaveOnboard = useCallback(() => setCameraMode('orbit'), []);
+  const lookOnboard = (direction: OnboardLook) =>
+    setLook((previous) => ({ sequence: previous.sequence + 1, direction }));
   const [appearance, setAppearance] = useState(initialEarthAppearance);
   useEffect(() => {
     try {
@@ -484,13 +496,13 @@ export default function App() {
           ],
     );
     setSelected(id);
-    setFollow(false);
+    setCameraMode('orbit');
   };
   const removeSatellite = (id: number) => {
     setSelections((previous) => previous.filter((item) => item.id !== id));
     if (selected === id) {
       setSelected(selections.find((item) => item.id !== id)?.id ?? null);
-      setFollow(false);
+      setCameraMode('orbit');
     }
   };
   const selectSatellite = (id: number) => {
@@ -548,7 +560,7 @@ export default function App() {
                   initializedMode.current = true;
                   setMode(value);
                   setReplay(null);
-                  setFollow(false);
+                  setCameraMode('orbit');
                 }}
               >
                 {value === 'live' ? <Radio size={12} /> : null}
@@ -589,7 +601,10 @@ export default function App() {
           <p>
             Positions are predicted locally from orbital elements. Drag to
             rotate, scroll to zoom, and select a satellite to inspect or follow
-            it.
+            it. Go onboard to ride at the satellite’s position. Drag or use the
+            arrow keys to look around; Earth, Space and Look ahead set your
+            gaze. This simulated view follows the orbit, not the spacecraft’s
+            actual attitude.
           </p>
           <p>
             Orbital distances use Earth’s scale; satellite markers are enlarged.
@@ -694,7 +709,7 @@ export default function App() {
                     aria-pressed={follow && selected === selection.id}
                     onClick={() => {
                       selectSatellite(selection.id);
-                      setFollow(true);
+                      setCameraMode('follow');
                     }}
                   >
                     <Crosshair size={15} />
@@ -711,7 +726,7 @@ export default function App() {
                             : item,
                         ),
                       );
-                      if (selection.id === selected) setFollow(false);
+                      if (selection.id === selected) setCameraMode('orbit');
                     }}
                   >
                     {selection.visible ? (
@@ -795,14 +810,21 @@ export default function App() {
             clock={clock}
             layers={layers}
             appearance={appearance}
-            follow={follow}
+            cameraMode={cameraMode}
+            look={look}
+            onExitOnboard={leaveOnboard}
             reset={reset}
             zoom={zoom}
           />
           <div className="scene-heading">
-            <span className="eyebrow">ORBITAL VIEW</span>
+            <span className="eyebrow">
+              {onboard ? 'ONBOARD VIEW' : 'ORBITAL VIEW'}
+            </span>
             <h2>
-              Earth & its companions<span>.</span>
+              {onboard && selectedSelection
+                ? `Aboard ${friendlyName(selectedSelection.id, selectedElement?.name)}`
+                : 'Earth & its companions'}
+              <span>.</span>
             </h2>
             <p>
               {visibleCount} satellites visible <span>·</span>{' '}
@@ -816,17 +838,59 @@ export default function App() {
           <section className="view-controls" aria-label="Globe controls">
             <h2>View controls</h2>
             {selectedSelection && (
-              <button
-                className={`follow-button ${follow ? 'following' : ''}`}
-                disabled={!selectedState || !selectedSelection.visible}
-                onClick={() => setFollow((value) => !value)}
-              >
-                <Crosshair size={16} />
-                {follow
-                  ? 'Stop following'
-                  : `Follow ${friendlyName(selectedSelection.id, selectedElement?.name)}`}
-                <ChevronRight size={14} />
-              </button>
+              <div className="satellite-camera-modes">
+                <button
+                  className={`follow-button ${follow ? 'following' : ''}`}
+                  disabled={!selectedState || !selectedSelection.visible}
+                  aria-pressed={follow}
+                  onClick={() => setCameraMode(follow ? 'orbit' : 'follow')}
+                >
+                  <Crosshair size={16} />
+                  {follow
+                    ? 'Stop following'
+                    : `Follow ${friendlyName(selectedSelection.id, selectedElement?.name)}`}
+                  <ChevronRight size={14} />
+                </button>
+                <button
+                  className={`follow-button onboard-button ${onboard ? 'following' : ''}`}
+                  disabled={
+                    !onboard &&
+                    (!selectedState ||
+                      !selectedElement ||
+                      !selectedSelection.visible)
+                  }
+                  aria-pressed={onboard}
+                  onClick={() => setCameraMode(onboard ? 'orbit' : 'onboard')}
+                >
+                  <Telescope size={16} />
+                  {onboard ? 'Return to Earth view' : 'Go onboard'}
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+            {onboard && (
+              <div className="onboard-controls">
+                <p role="status">
+                  <Telescope size={13} /> Onboard{' '}
+                  {selected
+                    ? friendlyName(selected, selectedElement?.name)
+                    : ''}
+                </p>
+                {(!selectedState || !selectedElement) && (
+                  <p>Waiting for orbital data…</p>
+                )}
+                <div aria-label="Onboard look direction">
+                  <button onClick={() => lookOnboard('forward')}>
+                    Look ahead
+                  </button>
+                  <button onClick={() => lookOnboard('earth')}>Earth</button>
+                  <button onClick={() => lookOnboard('space')}>Space</button>
+                </div>
+                <small>
+                  Drag to look around. Scroll to change field of view.
+                </small>
+                <small>Simulated orbital viewpoint.</small>
+              </div>
             )}
             {(tracker.serverError ||
               (mode === 'live' &&
@@ -902,7 +966,7 @@ export default function App() {
                 aria-label="Reset camera"
                 title="Reset view"
                 onClick={() => {
-                  setFollow(false);
+                  setCameraMode('orbit');
                   setReset((value) => value + 1);
                 }}
               >
@@ -964,7 +1028,7 @@ export default function App() {
                 Following{' '}
                 {selected ? friendlyName(selected, selectedElement?.name) : ''}
                 <button
-                  onClick={() => setFollow(false)}
+                  onClick={() => setCameraMode('orbit')}
                   aria-label="Stop following"
                 >
                   <X size={12} />
@@ -1024,7 +1088,11 @@ export default function App() {
                 ))}
               </div>
               <p className="gesture-hint">
-                {follow ? (
+                {onboard ? (
+                  <>
+                    Drag / arrow keys to look <span>·</span> Esc to exit
+                  </>
+                ) : follow ? (
                   <>
                     View locked above satellite <span>·</span> Scroll to zoom
                   </>

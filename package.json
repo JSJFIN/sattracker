@@ -26,6 +26,7 @@
     "three": "^0.186.1"
   },
   "devDependencies": {
+    "@react-three/test-renderer": "^9.1.1",
     "@types/d3-geo": "^3.1.1",
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.5",

@@ -32,9 +32,14 @@ import type {
   SimulationClock,
 } from '../shared/types';
 import { interpolatedPosition, simulationTime } from '../shared/clock';
-import { earthFollowPosition } from '../shared/camera';
+import {
+  earthFollowPosition,
+  type CameraMode,
+  type LookCommand,
+} from '../shared/camera';
 import type { OrbitEngine } from './useOrbitEngine';
 import { EARTH_STYLES, type EarthAppearance } from './earthStyles';
+import OnboardCamera from './OnboardCamera';
 
 export interface Layers {
   orbits: boolean;
@@ -52,7 +57,9 @@ interface Props {
   clock: SimulationClock;
   layers: Layers;
   appearance: EarthAppearance;
-  follow: boolean;
+  cameraMode: CameraMode;
+  look: LookCommand;
+  onExitOnboard: () => void;
   reset: number;
   zoom: { sequence: number; factor: number };
 }
@@ -243,6 +250,7 @@ function Satellite({
   onSelect,
   earthRef,
   markerPositions,
+  onboard,
 }: {
   selection: SatelliteSelection;
   element: OrbitalElements;
@@ -253,6 +261,7 @@ function Satellite({
   onSelect: () => void;
   earthRef: RefObject<Mesh>;
   markerPositions: Map<number, Vector3>;
+  onboard: boolean;
 }) {
   const group = useRef<Group>(null!);
   const core = useRef<Group>(null!);
@@ -308,7 +317,7 @@ function Satellite({
   }, -0.5);
   return (
     <group ref={group}>
-      <group ref={core}>
+      <group ref={core} visible={!onboard}>
         <mesh
           onClick={(event) => {
             event.stopPropagation();
@@ -338,7 +347,7 @@ function Satellite({
           </mesh>
         </Billboard>
       </group>
-      {layers.labels && (
+      {layers.labels && !onboard && (
         <Html
           position={[0, 0, 0]}
           calculatePosition={(object, camera, size) => {
@@ -374,17 +383,19 @@ function Satellite({
   );
 }
 
-function CameraRig({
+function EarthCameraRig({
   selected,
-  follow,
+  cameraMode,
   clock,
   reset,
   zoom,
   markerPositions,
-}: Pick<Props, 'selected' | 'follow' | 'clock' | 'reset' | 'zoom'> & {
+}: Pick<Props, 'selected' | 'cameraMode' | 'clock' | 'reset' | 'zoom'> & {
   markerPositions: Map<number, Vector3>;
 }) {
   const controls = useRef<OrbitControlsImpl>(null!);
+  const follow = cameraMode === 'follow';
+  const previousZoom = useRef(zoom.sequence);
   const { camera } = useThree();
   useEffect(() => {
     controls.current.target.set(0, 0, 0);
@@ -401,7 +412,8 @@ function CameraRig({
     controls.current.update();
   }, [reset, camera]);
   useEffect(() => {
-    if (!zoom.sequence) return;
+    if (previousZoom.current === zoom.sequence) return;
+    previousZoom.current = zoom.sequence;
     const center = controls.current.target;
     const distance = camera.position
       .clone()
@@ -478,24 +490,27 @@ function OrbitalScene(props: Props) {
           const state = engine.frame.current.states.get(path.id);
           return (
             <group key={path.id}>
-              {layers.orbits && (
-                <Line
-                  points={path.points}
-                  color={color}
-                  transparent
-                  opacity={path.id === selected ? 0.65 : 0.2}
-                  lineWidth={path.id === selected ? 1.25 : 0.7}
-                />
-              )}
-              {layers.trails && state && (
-                <Line
-                  points={[...path.points.slice(0, 31), state.position]}
-                  color={color}
-                  transparent
-                  opacity={path.id === selected ? 0.9 : 0.5}
-                  lineWidth={2}
-                />
-              )}
+              {layers.orbits &&
+                !(props.cameraMode === 'onboard' && path.id === selected) && (
+                  <Line
+                    points={path.points}
+                    color={color}
+                    transparent
+                    opacity={path.id === selected ? 0.65 : 0.2}
+                    lineWidth={path.id === selected ? 1.25 : 0.7}
+                  />
+                )}
+              {layers.trails &&
+                state &&
+                !(props.cameraMode === 'onboard' && path.id === selected) && (
+                  <Line
+                    points={[...path.points.slice(0, 31), state.position]}
+                    color={color}
+                    transparent
+                    opacity={path.id === selected ? 0.9 : 0.5}
+                    lineWidth={2}
+                  />
+                )}
             </group>
           );
         })}
@@ -517,12 +532,26 @@ function OrbitalScene(props: Props) {
                 layers={layers}
                 earthRef={earthRef}
                 markerPositions={markerPositions}
+                onboard={
+                  props.cameraMode === 'onboard' && selected === selection.id
+                }
                 onSelect={() => props.onSelect(selection.id)}
               />
             )
           );
         })}
-      <CameraRig {...props} markerPositions={markerPositions} />
+      {props.cameraMode === 'onboard' ? (
+        <OnboardCamera
+          selected={selected}
+          engine={engine}
+          markerPositions={markerPositions}
+          zoom={props.zoom}
+          look={props.look}
+          onExit={props.onExitOnboard}
+        />
+      ) : (
+        <EarthCameraRig {...props} markerPositions={markerPositions} />
+      )}
     </>
   );
 }
