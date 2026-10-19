@@ -34,6 +34,7 @@ import type {
 import { interpolatedPosition, simulationTime } from '../shared/clock';
 import { earthFollowPosition } from '../shared/camera';
 import type { OrbitEngine } from './useOrbitEngine';
+import { EARTH_STYLES, type EarthAppearance } from './earthStyles';
 
 export interface Layers {
   orbits: boolean;
@@ -50,6 +51,7 @@ interface Props {
   onSelect: (id: number) => void;
   clock: SimulationClock;
   layers: Layers;
+  appearance: EarthAppearance;
   follow: boolean;
   reset: number;
   zoom: { sequence: number; factor: number };
@@ -58,11 +60,18 @@ interface Props {
 const vertex = `varying vec2 vUv; varying vec3 vNormal; varying vec3 vPosition;
 void main() { vUv=uv; vec4 world=modelMatrix*vec4(position,1.); vPosition=world.xyz;
 vNormal=normalize(mat3(modelMatrix)*normal); gl_Position=projectionMatrix*viewMatrix*world; }`;
-const earthFragment = `uniform sampler2D dayMap; uniform vec3 sunDirection; uniform float sunlight;
+const earthFragment = `uniform sampler2D dayMap; uniform sampler2D borderMap; uniform sampler2D nameMap;
+uniform vec3 sunDirection; uniform float sunlight; uniform float cartographic;
+uniform float borders; uniform float names;
 varying vec2 vUv; varying vec3 vNormal; varying vec3 vPosition;
 void main() { vec3 day=texture2D(dayMap,vUv).rgb; float light=dot(normalize(vNormal),sunDirection);
-float intensity=mix(.82,.055+.945*smoothstep(-.16,.85,light),sunlight);
-gl_FragColor=vec4(day*intensity,1.);
+float ambient=mix(.055,.32,cartographic);
+float intensity=mix(.82,ambient+(1.-ambient)*smoothstep(-.16,.85,light),sunlight);
+vec3 color=day*intensity;
+vec4 border=texture2D(borderMap,vUv); vec4 name=texture2D(nameMap,vUv);
+color=mix(color,border.rgb,border.a*borders);
+color=mix(color,name.rgb,name.a*names);
+gl_FragColor=vec4(color,1.);
 #include <tonemapping_fragment>
 #include <colorspace_fragment>
 }`;
@@ -74,25 +83,65 @@ gl_FragColor=vec4(vec3(.19,.50,.85)*light,rim*.47);
 #include <colorspace_fragment>
 }`;
 
-function Earth({
+function EarthSurface({
   clock,
   layers,
-  earthRef,
-}: Pick<Props, 'clock' | 'layers'> & { earthRef: RefObject<Mesh> }) {
-  const group = useRef<Group>(null!);
+  appearance,
+}: Pick<Props, 'clock' | 'layers' | 'appearance'>) {
   const surface = useRef<ShaderMaterial>(null!);
-  const atmosphere = useRef<ShaderMaterial>(null!);
-  const dayMap = useTexture('/textures/earth-day.jpg');
-  dayMap.colorSpace = SRGBColorSpace;
-  dayMap.anisotropy = 8;
+  const [dayMap, borderMap, nameMap] = useTexture([
+    EARTH_STYLES.find((style) => style.id === appearance.style)!.texture,
+    '/textures/earth-borders.png',
+    '/textures/earth-names.png',
+  ]);
+  for (const texture of [dayMap, borderMap, nameMap]) {
+    texture.colorSpace = SRGBColorSpace;
+    texture.anisotropy = 8;
+  }
   const uniforms = useMemo(
     () => ({
       dayMap: { value: dayMap },
+      borderMap: { value: borderMap },
+      nameMap: { value: nameMap },
       sunDirection: { value: new Vector3(1, 0.2, 1).normalize() },
       sunlight: { value: 1 },
+      cartographic: { value: 0 },
+      borders: { value: 0 },
+      names: { value: 0 },
     }),
-    [dayMap],
+    [dayMap, borderMap, nameMap],
   );
+  useFrame(() => {
+    const sun = sunPos(jday(new Date(simulationTime(clock))));
+    surface.current.uniforms.sunDirection.value
+      .set(sun.rsun[0], sun.rsun[2], -sun.rsun[1])
+      .normalize();
+    surface.current.uniforms.sunlight.value = layers.sunlight ? 1 : 0;
+    surface.current.uniforms.cartographic.value =
+      appearance.style === 'imagery' ? 0 : 1;
+    surface.current.uniforms.borders.value = appearance.borders ? 1 : 0;
+    surface.current.uniforms.names.value = appearance.names ? 1 : 0;
+  });
+  return (
+    <shaderMaterial
+      ref={surface}
+      vertexShader={vertex}
+      fragmentShader={earthFragment}
+      uniforms={uniforms}
+    />
+  );
+}
+
+function Earth({
+  clock,
+  layers,
+  appearance,
+  earthRef,
+}: Pick<Props, 'clock' | 'layers' | 'appearance'> & {
+  earthRef: RefObject<Mesh>;
+}) {
+  const group = useRef<Group>(null!);
+  const atmosphere = useRef<ShaderMaterial>(null!);
   const atmosphereUniforms = useMemo(
     () => ({ sunDirection: { value: new Vector3(1, 0, 1).normalize() } }),
     [],
@@ -106,8 +155,6 @@ function Earth({
       sun.rsun[2],
       -sun.rsun[1],
     ).normalize();
-    surface.current.uniforms.sunDirection.value.copy(direction);
-    surface.current.uniforms.sunlight.value = layers.sunlight ? 1 : 0;
     atmosphere.current.uniforms.sunDirection.value.copy(direction);
   });
   return (
@@ -115,12 +162,13 @@ function Earth({
       <group ref={group}>
         <mesh ref={earthRef}>
           <sphereGeometry args={[1, 96, 64]} />
-          <shaderMaterial
-            ref={surface}
-            vertexShader={vertex}
-            fragmentShader={earthFragment}
-            uniforms={uniforms}
-          />
+          <Suspense fallback={<meshBasicMaterial color="#152b3b" />}>
+            <EarthSurface
+              clock={clock}
+              layers={layers}
+              appearance={appearance}
+            />
+          </Suspense>
         </mesh>
         {layers.grid && (
           <mesh>
@@ -415,9 +463,12 @@ function OrbitalScene(props: Props) {
     <>
       <color attach="background" args={['#080c13']} />
       <Starfield />
-      <Suspense fallback={null}>
-        <Earth clock={props.clock} layers={layers} earthRef={earthRef} />
-      </Suspense>
+      <Earth
+        clock={props.clock}
+        layers={layers}
+        appearance={props.appearance}
+        earthRef={earthRef}
+      />
       {engine.paths
         .filter((path) => visible.has(path.id) && path.points.length > 1)
         .map((path) => {

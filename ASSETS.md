@@ -11,6 +11,19 @@
 
 The sphere, atmosphere, orbit paths, starfield and enlarged satellite markers are generated in Three.js. No external 3D spacecraft models are used in this version.
 
+## Earth map styles and overlays
+
+Natural Earth raster and vector data are **public domain**: https://www.naturalearthdata.com/about/terms-of-use/
+
+- `public/textures/earth-natural.jpg`: Natural Earth II, 1:50m shaded relief with water, raster v3.2.0. https://www.naturalearthdata.com/downloads/50m-raster-data/50m-natural-earth-2/
+  Source: https://naciscdn.org/naturalearth/50m/raster/NE2_50M_SR_W.zip
+- `public/textures/earth-gray.jpg`: Gray Earth, 1:50m shaded relief, hypsography and flat water, raster v3.2.0. https://www.naturalearthdata.com/downloads/50m-raster-data/50m-gray-earth/
+  Source: https://naciscdn.org/naturalearth/50m/raster/GRAY_50M_SR_W.zip
+- `public/textures/earth-countries.jpg`, `earth-borders.png`, `earth-names.png`: generated from Natural Earth's 1:50m Admin 0 countries. Country colors use `MAPCOLOR7`; names and placement use the dataset's English names and label coordinates. Some small or overlapping names are omitted. These are geographic reference maps; boundaries follow the source dataset's conventions.
+  Source: https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_50m_admin_0_countries.geojson
+
+All new textures are 4096 × 2048 equirectangular images. Rebuild with `npm run assets:earth` (requires `unzip`); the build script downloads source files to the ignored `.cache/earth-assets/` directory, resizes raster maps, and renders vector geometry and text with D3 Geo and Sharp. The app serves the generated images locally; style switching needs no external map service or API key. The original NASA texture is retained unchanged.
+
 ## Satellite data
 
 - **N2YO:** live orbital elements, obtained exclusively by the local backend using the user's API key. https://www.n2yo.com/api/

@@ -44,6 +44,11 @@ import { useOrbitEngine } from './useOrbitEngine';
 import { useTracker } from './useTracker';
 import { useArchive } from './useArchive';
 import Timeline from './Timeline';
+import {
+  EARTH_STYLES,
+  EARTH_PREFERENCE_KEY,
+  initialEarthAppearance,
+} from './earthStyles';
 
 const DEMO_EPOCH = Date.UTC(2026, 9, 19, 0, 0, 0);
 const EMPTY_ELEMENTS: OrbitalElements[] = [];
@@ -345,6 +350,14 @@ export default function App() {
     grid: false,
   });
   const [follow, setFollow] = useState(false);
+  const [appearance, setAppearance] = useState(initialEarthAppearance);
+  useEffect(() => {
+    try {
+      localStorage.setItem(EARTH_PREFERENCE_KEY, JSON.stringify(appearance));
+    } catch {
+      // Style switching still works when browser storage is unavailable.
+    }
+  }, [appearance]);
   const [reset, setReset] = useState(0);
   const [zoom, setZoom] = useState({ sequence: 0, factor: 1 });
   const [help, setHelp] = useState(false);
@@ -583,8 +596,9 @@ export default function App() {
             TLE data cannot tell us a spacecraft’s actual attitude.
           </p>
           <p>
-            Earth imagery: NASA Earth Observatory. Name catalogue and demo
-            snapshot: CelesTrak, 19 Oct 2026. Live orbital elements: N2YO.
+            Earth imagery: NASA Earth Observatory. Map styles, borders and
+            country names: Natural Earth (public domain). Name catalogue and
+            demo snapshot: CelesTrak, 19 Oct 2026. Live orbital elements: N2YO.
           </p>
           <a href="https://www.n2yo.com/api/" target="_blank" rel="noreferrer">
             N2YO API reference <ArrowUpRight size={12} />
@@ -780,6 +794,7 @@ export default function App() {
             onSelect={selectSatellite}
             clock={clock}
             layers={layers}
+            appearance={appearance}
             follow={follow}
             reset={reset}
             zoom={zoom}
@@ -894,6 +909,55 @@ export default function App() {
                 <Maximize2 size={17} />
               </button>
             </div>
+            <fieldset className="earth-appearance">
+              <legend>Earth style</legend>
+              <div className="earth-style-options">
+                {EARTH_STYLES.map((style) => (
+                  <button
+                    key={style.id}
+                    className={appearance.style === style.id ? 'active' : ''}
+                    aria-pressed={appearance.style === style.id}
+                    onClick={() =>
+                      setAppearance((previous) => ({
+                        ...previous,
+                        style: style.id,
+                      }))
+                    }
+                  >
+                    <span className={`earth-swatch earth-swatch-${style.id}`} />
+                    {style.name}
+                  </button>
+                ))}
+              </div>
+              <div className="earth-map-overlays">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={appearance.borders}
+                    onChange={(event) =>
+                      setAppearance((previous) => ({
+                        ...previous,
+                        borders: event.target.checked,
+                      }))
+                    }
+                  />
+                  Country borders
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={appearance.names}
+                    onChange={(event) =>
+                      setAppearance((previous) => ({
+                        ...previous,
+                        names: event.target.checked,
+                      }))
+                    }
+                  />
+                  Country names
+                </label>
+              </div>
+            </fieldset>
             {follow && selectedState && (
               <div className="follow-badge">
                 <Crosshair size={13} />
@@ -1168,7 +1232,9 @@ export default function App() {
           LOCAL ORBIT PROPAGATION <span className="footer-divider">/</span> SGP4
         </span>
         <span className="footer-credit">
-          EARTH IMAGERY · NASA EARTH OBSERVATORY
+          {appearance.style === 'imagery'
+            ? `EARTH · NASA${appearance.borders || appearance.names ? ' / NATURAL EARTH' : ' EARTH OBSERVATORY'}`
+            : 'MAPS · NATURAL EARTH'}
         </span>
         <span>
           <Globe2 size={12} />

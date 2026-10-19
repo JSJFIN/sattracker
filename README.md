@@ -29,6 +29,7 @@ Without a key, the app opens in **Demo** mode. Demo uses ten bundled CelesTrak o
 - Choose **Add satellite** to search the local active-satellite catalogue by name, partial name or NORAD ID. A numeric NORAD ID can also be entered directly for objects outside the catalogue.
 - Click a satellite marker or a row in the watchlist to inspect it. Use a row's crosshair or **Center & follow satellite** to view it directly from above, keeping Earth centered and rotating the viewpoint with the satellite, in live mode and replay. Zoom remains available; stop following to rotate the camera freely; **Reset camera** returns to Earth.
 - Use **View controls** inside the orbital view along its left edge for camera zoom/reset, orbits, labels, recent paths, sunlight and the geographic grid. History playback and follow status are there too, leaving the globe unobstructed.
+- Under **Earth style**, switch between NASA **Imagery**, **Natural Earth**, **Gray Earth**, and a dark **Country map**. Optional **Country borders** and **Country names** work with every style. Your choice is saved in this browser. Textures are bundled locally and consume no N2YO requests. Turn off **Sunlight** for even map illumination; map styles also retain some night-side brightness to keep geography readable.
 - Use each row's eye to show or hide a satellite; use its `×` to remove it. The watchlist is saved in this browser.
 - Earth and orbital distances use the same scale. Satellite markers are enlarged so they remain visible; they do not represent actual spacecraft size or attitude.
 
