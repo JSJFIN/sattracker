@@ -40,6 +40,8 @@ import {
 import type { OrbitEngine } from './useOrbitEngine';
 import { EARTH_STYLES, type EarthAppearance } from './earthStyles';
 import OnboardCamera from './OnboardCamera';
+import DistanceMeasurement from './DistanceMeasurement';
+import type { DistancePair, DistanceReading } from '../shared/distance';
 
 export interface Layers {
   orbits: boolean;
@@ -62,6 +64,9 @@ interface Props {
   onExitOnboard: () => void;
   reset: number;
   zoom: { sequence: number; factor: number };
+  distancePair: DistancePair | null;
+  showDistanceLine: boolean;
+  onDistanceReading: (reading: DistanceReading | null) => void;
 }
 
 const vertex = `varying vec2 vUv; varying vec3 vNormal; varying vec3 vPosition;
@@ -540,6 +545,18 @@ function OrbitalScene(props: Props) {
             )
           );
         })}
+      {props.distancePair && (
+        <DistanceMeasurement
+          pair={props.distancePair}
+          showLine={props.showDistanceLine}
+          engine={engine}
+          clock={props.clock}
+          elements={elements}
+          selections={selections}
+          markerPositions={markerPositions}
+          onReading={props.onDistanceReading}
+        />
+      )}
       {props.cameraMode === 'onboard' ? (
         <OnboardCamera
           selected={selected}

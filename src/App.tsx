@@ -49,6 +49,8 @@ import { useOrbitEngine } from './useOrbitEngine';
 import { useTracker } from './useTracker';
 import { useArchive } from './useArchive';
 import Timeline from './Timeline';
+import DistanceTool from './DistanceTool';
+import type { DistancePair, DistanceReading } from '../shared/distance';
 import {
   EARTH_STYLES,
   EARTH_PREFERENCE_KEY,
@@ -397,6 +399,11 @@ export default function App() {
   const [demoOffset] = useState(() => DEMO_EPOCH - Date.now());
   const [replay, setReplay] = useState<SimulationClock | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [measuring, setMeasuring] = useState(false);
+  const [distancePair, setDistancePair] = useState<DistancePair>([null, null]);
+  const [showDistanceLine, setShowDistanceLine] = useState(true);
+  const [distanceReading, setDistanceReading] =
+    useState<DistanceReading | null>(null);
   const tracker = useTracker(selections, mode === 'live');
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
@@ -519,6 +526,13 @@ export default function App() {
   };
   const removeSatellite = (id: number) => {
     setSelections((previous) => previous.filter((item) => item.id !== id));
+    setDistancePair((previous) =>
+      previous.includes(id)
+        ? (previous.map((value) =>
+            value === id ? null : value,
+          ) as DistancePair)
+        : previous,
+    );
     if (selected === id) {
       setSelected(selections.find((item) => item.id !== id)?.id ?? null);
       setCameraMode('orbit');
@@ -534,6 +548,39 @@ export default function App() {
   };
   const toggleLayer = (key: keyof Layers) =>
     setLayers((previous) => ({ ...previous, [key]: !previous[key] }));
+  const toggleMeasuring = () => {
+    setDistanceReading(null);
+    if (measuring) {
+      setMeasuring(false);
+      return;
+    }
+    const ids = new Set(selections.map((satellite) => satellite.id));
+    const a =
+      distancePair[0] !== null && ids.has(distancePair[0])
+        ? distancePair[0]
+        : selected !== null && ids.has(selected)
+          ? selected
+          : (selections[0]?.id ?? null);
+    const b =
+      distancePair[1] !== null &&
+      ids.has(distancePair[1]) &&
+      distancePair[1] !== a
+        ? distancePair[1]
+        : (selections.find((satellite) => satellite.id !== a)?.id ?? null);
+    setDistancePair([a, b]);
+    setMeasuring(true);
+  };
+  const currentDistance =
+    measuring &&
+    distanceReading &&
+    distanceReading.clock === clock &&
+    distancePair.every(
+      (id, index) =>
+        id === distanceReading.ids[index] &&
+        elements.some((element) => element.id === id),
+    )
+      ? distanceReading
+      : null;
 
   return (
     <div className="app-shell">
@@ -834,6 +881,9 @@ export default function App() {
             onExitOnboard={leaveOnboard}
             reset={reset}
             zoom={zoom}
+            distancePair={measuring ? distancePair : null}
+            showDistanceLine={showDistanceLine}
+            onDistanceReading={setDistanceReading}
           />
           <div className="scene-heading">
             <span className="eyebrow">
@@ -937,6 +987,23 @@ export default function App() {
                   <small>Simulated orbital viewpoint.</small>
                 </div>
               )}
+              <DistanceTool
+                enabled={measuring}
+                pair={distancePair}
+                reading={currentDistance}
+                selections={selections}
+                name={(id) =>
+                  friendlyName(
+                    id,
+                    elements.find((element) => element.id === id)?.name ||
+                      liveElements.find((element) => element.id === id)?.name,
+                  )
+                }
+                showLine={showDistanceLine}
+                onToggle={toggleMeasuring}
+                onPair={setDistancePair}
+                onShowLine={setShowDistanceLine}
+              />
               {(tracker.serverError ||
                 (mode === 'live' &&
                   tracker.status &&

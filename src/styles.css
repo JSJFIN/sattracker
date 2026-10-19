@@ -2386,3 +2386,95 @@ button svg {
   font-size: 9px;
   line-height: 1.6;
 }
+.distance-tool {
+  margin: 0 0 12px;
+}
+.distance-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 1px solid #ffffff14;
+  border-radius: 6px;
+  background: #090f17;
+  color: #a3b3c3;
+  font-size: 11px;
+}
+.distance-toggle:hover,
+.distance-toggle.active {
+  border-color: #f5c98060;
+  background: #332a1c;
+  color: #f5c980;
+}
+.distance-toggle:disabled {
+  opacity: 0.5;
+}
+.distance-tool fieldset {
+  min-width: 0;
+  margin: 10px 0 0;
+  padding: 10px;
+  border: 1px solid #f5c98030;
+  border-radius: 6px;
+}
+.distance-tool legend {
+  padding: 0 5px;
+  color: #f5c980;
+  font-size: 10px;
+}
+.distance-tool small {
+  display: block;
+  margin-top: 7px;
+  color: #91a6b7;
+  font-size: 9px;
+  line-height: 1.6;
+}
+.distance-endpoint {
+  display: block;
+  margin: 0 0 10px;
+  color: #a3b3c3;
+  font-size: 10px;
+}
+.distance-endpoint > span {
+  display: block;
+  margin-bottom: 5px;
+}
+.distance-endpoint select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 5px;
+  border: 1px solid #ffffff20;
+  border-radius: 4px;
+  background: #090f17;
+  color: #c3cdd8;
+  font-size: 10px;
+  text-overflow: ellipsis;
+}
+.distance-value {
+  display: block;
+  color: #f5c980;
+  font-family: var(--mono);
+  font-size: 23px;
+  overflow-wrap: anywhere;
+}
+.distance-value span {
+  font-size: 12px;
+}
+.distance-status {
+  margin: 9px 0;
+  color: #b6c4d2;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.distance-line-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #a3b3c3;
+  font-size: 10px;
+}
+.distance-line-toggle input {
+  margin: 0;
+  accent-color: #f5c980;
+}
