@@ -34,7 +34,7 @@ import {
   History,
   Telescope,
 } from 'lucide-react';
-import { CATALOG, COLORS, DEFAULT_IDS } from '../shared/catalog';
+import { CATALOG, COLORS } from '../shared/catalog';
 import { epochFromRecord, parseElements } from '../shared/orbits';
 import type {
   OrbitalElements,
@@ -42,7 +42,7 @@ import type {
   SimulationClock,
 } from '../shared/types';
 import { simulationTime } from '../shared/clock';
-import type { CameraMode, LookCommand, OnboardLook } from '../shared/camera';
+import type { LookCommand, OnboardLook } from '../shared/camera';
 import demoRecords from './data/demo.json';
 import Scene, { type Layers } from './Scene';
 import { useOrbitEngine } from './useOrbitEngine';
@@ -51,11 +51,12 @@ import { useArchive } from './useArchive';
 import Timeline from './Timeline';
 import DistanceTool from './DistanceTool';
 import type { DistancePair, DistanceReading } from '../shared/distance';
+import { EARTH_STYLES } from './earthStyles';
 import {
-  EARTH_STYLES,
-  EARTH_PREFERENCE_KEY,
-  initialEarthAppearance,
-} from './earthStyles';
+  preferencesClient,
+  usePreferences,
+  usePreferenceState,
+} from './usePreferences';
 
 const DEMO_EPOCH = Date.UTC(2026, 9, 19, 0, 0, 0);
 const EMPTY_ELEMENTS: OrbitalElements[] = [];
@@ -89,38 +90,6 @@ const utc = (time: number) =>
     minute: '2-digit',
     hour12: false,
   });
-
-function initialSelections(): SatelliteSelection[] {
-  try {
-    const saved: unknown = JSON.parse(
-      localStorage.getItem('orbit-satellites') || 'null',
-    );
-    if (Array.isArray(saved) && saved.length <= 50) {
-      const ids = new Set<number>();
-      return saved.filter((item): item is SatelliteSelection => {
-        if (
-          !item ||
-          !Number.isSafeInteger(item.id) ||
-          item.id < 1 ||
-          item.id > 999999999 ||
-          ids.has(item.id) ||
-          !/^#[0-9a-fA-F]{6}$/.test(item.color) ||
-          typeof item.visible !== 'boolean'
-        )
-          return false;
-        ids.add(item.id);
-        return true;
-      });
-    }
-  } catch {
-    /* A browser can disable storage; the tracker still works for this session. */
-  }
-  return DEFAULT_IDS.map((id, index) => ({
-    id,
-    color: COLORS[index % COLORS.length],
-    visible: true,
-  }));
-}
 
 interface SearchEntry {
   id: number;
@@ -340,40 +309,51 @@ function SearchResult({
 }
 
 export default function App() {
-  const [selections, setSelections] =
-    useState<SatelliteSelection[]>(initialSelections);
-  const [selected, setSelected] = useState<number | null>(
-    () => initialSelections()[0]?.id ?? null,
+  const preferences = usePreferences();
+  if (!preferences.settings)
+    return (
+      <div className="settings-startup" role="status">
+        <Orbit size={30} />
+        <p>
+          {preferences.status === 'error'
+            ? 'Could not load settings from SQLite.'
+            : 'Loading your saved tracker…'}
+        </p>
+        {preferences.status === 'error' && (
+          <button onClick={() => void preferencesClient.retry()}>Retry</button>
+        )}
+      </div>
+    );
+  return (
+    <>
+      {preferences.status === 'error' && (
+        <div className="settings-error" role="alert">
+          Settings have not been saved to SQLite. Keep this tab open and retry.
+          <button onClick={() => void preferencesClient.retry()}>
+            Retry save
+          </button>
+        </div>
+      )}
+      <TrackerApp settingsStatus={preferences.status} />
+    </>
   );
-  const [mode, setMode] = useState<'live' | 'demo'>('live');
+}
+
+function TrackerApp({
+  settingsStatus,
+}: {
+  settingsStatus: 'loading' | 'ready' | 'saving' | 'error';
+}) {
+  const [selections, setSelections] = usePreferenceState('selections');
+  const [selected, setSelected] = usePreferenceState('selected');
+  const [mode, setMode] = usePreferenceState('mode');
   const initializedMode = useRef(false);
   const [filter, setFilter] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
-  const [controlsMinimized, setControlsMinimized] = useState(() => {
-    try {
-      return localStorage.getItem('orbit-view-controls-minimized') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        'orbit-view-controls-minimized',
-        String(controlsMinimized),
-      );
-    } catch {
-      // Keep the toggle usable when browser storage is unavailable.
-    }
-  }, [controlsMinimized]);
-  const [layers, setLayers] = useState<Layers>({
-    orbits: true,
-    labels: true,
-    trails: false,
-    sunlight: true,
-    grid: false,
-  });
-  const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
+  const [controlsMinimized, setControlsMinimized] =
+    usePreferenceState('controlsMinimized');
+  const [layers, setLayers] = usePreferenceState('layers');
+  const [cameraMode, setCameraMode] = usePreferenceState('cameraMode');
   const follow = cameraMode === 'follow';
   const onboard = cameraMode === 'onboard';
   const [look, setLook] = useState<LookCommand>({
@@ -383,14 +363,7 @@ export default function App() {
   const leaveOnboard = useCallback(() => setCameraMode('orbit'), []);
   const lookOnboard = (direction: OnboardLook) =>
     setLook((previous) => ({ sequence: previous.sequence + 1, direction }));
-  const [appearance, setAppearance] = useState(initialEarthAppearance);
-  useEffect(() => {
-    try {
-      localStorage.setItem(EARTH_PREFERENCE_KEY, JSON.stringify(appearance));
-    } catch {
-      // Style switching still works when browser storage is unavailable.
-    }
-  }, [appearance]);
+  const [appearance, setAppearance] = usePreferenceState('appearance');
   const [reset, setReset] = useState(0);
   const [zoom, setZoom] = useState({ sequence: 0, factor: 1 });
   const [help, setHelp] = useState(false);
@@ -398,10 +371,11 @@ export default function App() {
   const [clockOffset, setClockOffset] = useState(0);
   const [demoOffset] = useState(() => DEMO_EPOCH - Date.now());
   const [replay, setReplay] = useState<SimulationClock | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [measuring, setMeasuring] = useState(false);
-  const [distancePair, setDistancePair] = useState<DistancePair>([null, null]);
-  const [showDistanceLine, setShowDistanceLine] = useState(true);
+  const [historyOpen, setHistoryOpen] = usePreferenceState('historyOpen');
+  const [measuring, setMeasuring] = usePreferenceState('measuring');
+  const [distancePair, setDistancePair] = usePreferenceState('distancePair');
+  const [showDistanceLine, setShowDistanceLine] =
+    usePreferenceState('showDistanceLine');
   const [distanceReading, setDistanceReading] =
     useState<DistanceReading | null>(null);
   const tracker = useTracker(selections, mode === 'live');
@@ -417,13 +391,6 @@ export default function App() {
       if (!tracker.status.configured) setMode('demo');
     }
   }, [tracker.status]);
-  useEffect(() => {
-    try {
-      localStorage.setItem('orbit-satellites', JSON.stringify(selections));
-    } catch {
-      /* Session-only if storage is blocked. */
-    }
-  }, [selections]);
   const clock = useMemo<SimulationClock>(
     () =>
       mode === 'live' && replay
@@ -869,6 +836,13 @@ export default function App() {
                   ? `N2YO connected · ${tracker.status.refreshHours}h cache`
                   : 'Waiting for N2YO API key'}
             </div>
+            <p role="status">
+              {settingsStatus === 'error'
+                ? 'Settings not saved · retry above'
+                : settingsStatus === 'saving'
+                  ? 'Saving settings…'
+                  : 'Settings saved to SQLite'}
+            </p>
           </div>
         </aside>
 

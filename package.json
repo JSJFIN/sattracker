@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "start": "tsx server/index.ts",
     "test": "tsx --test tests/*.test.ts",
+    "backup": "tsx scripts/backup.ts",
     "catalog:update": "tsx scripts/update-catalog.ts",
     "assets:earth": "tsx scripts/build-earth-assets.ts"
   },

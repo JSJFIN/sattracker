@@ -64,7 +64,7 @@ The backend picks up API-key changes automatically. Restart it after changing ot
 | Rewind | **History & replay**, then scrub, enter a UTC time or choose a playback speed |
 | Clear the view | Click the **View controls** heading to minimize or expand it |
 
-View controls stay along the **left edge of the orbital view**. The watchlist, Earth appearance and minimized-panel preference are saved in this browser.
+View controls stay along the **left edge of the orbital view**. The watchlist and preferences are saved in SQLite and restored when you open the tracker in another browser on the same local server.
 
 Follow mode keeps Earth centered and places the viewpoint above the selected satellite. Onboard mode rides at the satellite's predicted position, with an orbit-relative viewing frame. Its own marker and path are hidden for visibility. This is a simulated viewpoint; orbital elements do not provide the spacecraft's actual attitude.
 
@@ -89,13 +89,29 @@ The backend also monitors N2YO's reported usage. Its local counter cannot fully 
 
 ## History and local data
 
-Orbital data is stored in **`.data/tracker.sqlite`**. Every successful N2YO fetch appends a timestamped snapshot, even when the TLE is unchanged. Previous snapshots and successful source data are retained; credentials and upstream request URLs are not archived.
+Orbital data, the watchlist and preferences are stored in **`.data/tracker.sqlite`**. Every successful N2YO fetch appends a timestamped snapshot, even when the TLE is unchanged. Previous snapshots and successful source data are retained; credentials and upstream request URLs are not archived.
+
+The shared local settings profile includes watchlist order, colors and visibility, selected satellite, Live/Demo mode, follow/onboard mode, Earth style and overlays, layer toggles, minimized controls, history-panel visibility, and distance-tool choices. Temporary search text, replay position, camera zoom and look direction remain session state.
+
+On the first launch after upgrading, Orbit imports the watchlist, Earth appearance and minimized-controls preference from the browser previously used with the app. Once SQLite acknowledges them, those old browser entries are removed. If the database already contains a profile, it takes precedence over browser entries. All browsers connected to this server share one profile; reopen or reload to load another browser's latest changes. Failed saves show a retry message and retain unsaved changes in the open tab.
 
 Replay uses each satellite's **last snapshot fetched at or before the selected time**. Satellites without a snapshot at that time are hidden. It switches element sets as playback crosses snapshot boundaries and never substitutes a later element set for missing historical data.
 
 History reconstructs predicted positions from saved orbital elements. Collection happens when the running app fetches data; leaving only the backend running does not schedule unattended collection. The archive has no automatic expiry and cannot backfill history from before the first saved fetch.
 
-To back up your history, stop the local server and copy `.data/`. Database files, caches and local `docs/` notes are excluded from Git.
+To back up **history and settings together**, first open the app and wait for **Settings saved to SQLite** under the API budget. Then run:
+
+```sh
+npm run backup
+# Optional destination (must not already exist):
+npm run backup -- /path/to/backup/tracker.sqlite
+```
+
+The default destination is a timestamped file in `.data/backups/`. This uses SQLite's online backup API, so the server can remain running and committed WAL data is included in one standalone file. Copy the backup to another disk or your usual backup location.
+
+To restore, **close tracker tabs and stop the server**, move the existing `.data/` directory somewhere safe, create a new `.data/` directory, and copy the backup into it as **`.data/tracker.sqlite`**. Start the server and open the tracker; the saved profile loads without browser storage. Moving the entire old directory also keeps its `-wal` and `-shm` files away from the restored database.
+
+Alternatively, stop the server and copy the entire `.data/` directory. Do not copy only the active `tracker.sqlite` file while the server is running. The API key and server configuration remain in **`.env`**, outside the database; back that file up separately and privately. Database files, backups, caches and local `docs/` notes are excluded from Git.
 
 ## Configuration and key handling
 
@@ -125,7 +141,7 @@ npm test
 npm run build
 ```
 
-Tests cover API budgets and deduplication, error handling, history migration and snapshot boundaries, orbital reference cases, interpolation through 60× playback, camera geometry and onboard controls, and satellite-distance calculations checked against independent SGP4 reference results. N2YO test responses are mocked; the suite spends no real API requests.
+Tests cover API budgets and deduplication, error handling, history migration and snapshot boundaries, preference migration and concurrent saves, online backup restoration, orbital reference cases, interpolation through 60× playback, camera geometry and onboard controls, and satellite-distance calculations checked against independent SGP4 reference results. N2YO test responses are mocked; the suite spends no real API requests.
 
 After building, run the app and API together with:
 
@@ -139,10 +155,11 @@ Optional maintenance commands:
 
 | Command | Purpose |
 | --- | --- |
+| `npm run backup -- [destination.sqlite]` | Back up history, watchlist and preferences while the server runs; destination is optional |
 | `npm run catalog:update` | Refresh the bundled CelesTrak name catalogue; run at most once daily, then restart the API |
 | `npm run assets:earth` | Rebuild map textures from public-domain Natural Earth data; requires `unzip` |
 
-These commands download external data. Earth textures and the catalogue are already bundled, so neither is required for normal startup. The catalogue is a dated active-satellite snapshot, supplemented with archived names; numeric ID entry supports objects outside it.
+The catalogue and Earth-asset commands download external data. Earth textures and the catalogue are already bundled, so neither is required for normal startup. The catalogue is a dated active-satellite snapshot, supplemented with archived names; numeric ID entry supports objects outside it.
 
 <details>
 <summary>Local history API</summary>
@@ -164,6 +181,8 @@ These commands download external data. Earth textures and the catalogue are alre
 | `src/DistanceTool.tsx`, `src/DistanceMeasurement.tsx` | Distance controls and connection rendering |
 | `shared/` | Orbital coordinates, clocks, camera geometry and distance calculations |
 | `server/n2yo.ts`, `server/store.ts` | Upstream requests, SQLite cache and archive |
+| `shared/preferences.ts`, `server/preferences.ts`, `src/preferencesClient.ts` | Validated SQLite settings and browser migration |
+| `scripts/backup.ts`, `server/backup.ts` | Online SQLite backups |
 
 </details>
 

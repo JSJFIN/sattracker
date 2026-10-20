@@ -50,8 +50,10 @@ test-results/
 Thumbs.db
 Desktop.ini
 
-# Local orbital-data cache and request accounting
+# Local orbital data, preferences, request accounting and backups
 .data/
+*.sqlite
+*.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
 

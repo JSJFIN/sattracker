@@ -1,4 +1,9 @@
 import { DatabaseSync } from 'node:sqlite';
+import {
+  normalizePreferences,
+  parsePreferences,
+  type Preferences,
+} from '../shared/preferences';
 import type {
   HistoryFrame,
   HistorySummary,
@@ -18,6 +23,10 @@ export class Store {
       CREATE TABLE IF NOT EXISTS requests (timestamp INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS request_time ON requests(timestamp);
       CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS preferences (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        json TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS element_history (
         satellite_id INTEGER NOT NULL,
         fetched_at INTEGER NOT NULL,
@@ -30,6 +39,36 @@ export class Store {
         SELECT id, json_extract(json, '$.fetchedAt'), json_extract(json, '$.epoch'), json
         FROM elements WHERE json_extract(json, '$.source') = 'n2yo';
     `);
+  }
+  preferences(): Preferences | null {
+    const row = this.db
+      .prepare('SELECT json FROM preferences WHERE id = 1')
+      .get() as { json: string } | undefined;
+    return row ? parsePreferences(JSON.parse(row.json)) : null;
+  }
+  initializePreferences(value: Preferences): Preferences {
+    this.db
+      .prepare('INSERT OR IGNORE INTO preferences (id, json) VALUES (1, ?)')
+      .run(JSON.stringify(value));
+    return this.preferences()!;
+  }
+  patchPreferences(patch: Partial<Preferences>): Preferences | null {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const previous = this.preferences();
+      const next = previous
+        ? normalizePreferences({ ...previous, ...patch })
+        : null;
+      if (next)
+        this.db
+          .prepare('UPDATE preferences SET json = ? WHERE id = 1')
+          .run(JSON.stringify(next));
+      this.db.exec('COMMIT');
+      return next;
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
   }
   get(id: number): OrbitalElements | undefined {
     const row = this.db

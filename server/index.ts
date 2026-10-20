@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { parse } from 'dotenv';
 import { Store } from './store';
 import { ApiError, N2yoService } from './n2yo';
+import { preferencesRouter } from './preferences';
 
 const root = resolve(import.meta.dirname, '..');
 const env = () => {
@@ -41,6 +42,7 @@ app.use('/api', (_request, response, next) => {
   next();
 });
 app.get('/api/status', (_request, response) => response.json(service.status()));
+app.use('/api/preferences', preferencesRouter(store));
 app.get('/api/catalog', (_request, response) => {
   const satellites = new Map(catalog.satellites.map((item) => [item.id, item]));
   for (const item of store.history(undefined, Date.now()).satellites) {

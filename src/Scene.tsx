@@ -43,13 +43,8 @@ import OnboardCamera from './OnboardCamera';
 import DistanceMeasurement from './DistanceMeasurement';
 import type { DistancePair, DistanceReading } from '../shared/distance';
 
-export interface Layers {
-  orbits: boolean;
-  labels: boolean;
-  trails: boolean;
-  sunlight: boolean;
-  grid: boolean;
-}
+import type { GlobeLayers } from '../shared/preferences';
+export type Layers = GlobeLayers;
 interface Props {
   selections: SatelliteSelection[];
   elements: OrbitalElements[];

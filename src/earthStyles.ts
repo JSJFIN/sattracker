@@ -13,32 +13,5 @@ export const EARTH_STYLES = [
   },
 ] as const;
 
+export type { EarthAppearance } from '../shared/preferences';
 export type EarthStyle = (typeof EARTH_STYLES)[number]['id'];
-export interface EarthAppearance {
-  style: EarthStyle;
-  borders: boolean;
-  names: boolean;
-}
-export const EARTH_PREFERENCE_KEY = 'orbit-earth-appearance';
-export function initialEarthAppearance(): EarthAppearance {
-  const defaults: EarthAppearance = {
-    style: 'imagery',
-    borders: false,
-    names: false,
-  };
-  try {
-    const saved = JSON.parse(
-      localStorage.getItem(EARTH_PREFERENCE_KEY) || 'null',
-    );
-    return {
-      style: EARTH_STYLES.some((style) => style.id === saved?.style)
-        ? saved.style
-        : defaults.style,
-      borders:
-        typeof saved?.borders === 'boolean' ? saved.borders : defaults.borders,
-      names: typeof saved?.names === 'boolean' ? saved.names : defaults.names,
-    };
-  } catch {
-    return defaults;
-  }
-}

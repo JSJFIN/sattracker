@@ -2521,3 +2521,37 @@ button svg {
   color: #d2dce6;
   overflow-wrap: anywhere;
 }
+.settings-startup {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text, #b9c6d2);
+  background: #10151b;
+}
+.settings-startup button,
+.settings-error button {
+  border: 1px solid #3c6e65;
+  border-radius: 5px;
+  background: #1b302f;
+  color: #83e9ce;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.settings-error {
+  position: fixed;
+  top: 78px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  width: min(90vw, 550px);
+  padding: 12px;
+  border: 1px solid #e6b881;
+  border-radius: 8px;
+  color: #e6b881;
+  background: #171d24;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
