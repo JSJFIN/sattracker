@@ -54,3 +54,6 @@ Desktop.ini
 .data/
 *.sqlite-wal
 *.sqlite-shm
+
+# Local documentation and investigation notes
+/docs/

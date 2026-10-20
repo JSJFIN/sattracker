@@ -1,123 +1,174 @@
 # Orbit — Satellite Tracker
 
-A local 3D satellite tracker built with React, TypeScript and Three.js. Track up to **50 satellites** simultaneously, search by name or NORAD ID, inspect orbital telemetry and follow a satellite around Earth.
+Explore Earth and its satellites in 3D. **Orbit** is a local satellite tracker built with React, TypeScript and Three.js, using N2YO orbital elements and local SGP4/SDP4 propagation for smooth motion without constant API polling.
 
-## Run locally
+![Orbit showing Earth in Natural Earth style, satellite labels, camera controls and orbital telemetry](assets/orbit-tracker.png)
 
-Requires **Node.js 24+** and npm.
+*Natural Earth map style with country labels and Earth-centered satellite following. The screenshot shows an example session, not current satellite positions.*
+
+## Features
+
+- **Track up to 50 satellites** together. Search the bundled catalogue by name, partial name or NORAD ID; enter other NORAD IDs directly.
+- **Three camera modes:** freely orbit Earth, follow a satellite from above, or go onboard and look around from its position.
+- **Measure satellite separation** in 3D, including altitude difference and which satellite is higher. Display an optional connecting line and geometric Earth-obstruction indicator.
+- **Save and rewind history.** SQLite archives orbital snapshots for UTC seeking, pause, reverse playback and speeds up to 60×.
+- **Four Earth styles:** NASA imagery, Natural Earth, Gray Earth and a dark country map, with optional country borders and names.
+- **Customize the globe** with orbit paths, labels, trails, sunlight and a geographic grid. Minimize the controls to clear the view.
+- **Keep API use low** with persistent caching, request deduplication, rate limiting and local orbital prediction.
+- **Try it without a key** using the bundled demo snapshot.
+
+## Quick start
+
+Requires **Node.js 24 or later**, npm and a browser with WebGL / hardware acceleration enabled.
 
 ```sh
+git clone https://github.com/JSJFIN/sattracker.git
+cd sattracker
 npm ci
-cp .env.example .env
 ```
 
-If `.env` already exists, keep it. Add your key to `N2YO_API_KEY=` in that file, then run:
+For a new installation, copy `.env.example` to `.env`. **Keep your existing `.env` when updating.** On Linux or macOS:
+
+```sh
+cp -n .env.example .env
+chmod 600 .env
+```
+
+On Windows, copy the file manually if `.env` does not already exist.
+
+For live tracking, get a key from [N2YO](https://www.n2yo.com/api/) and set `N2YO_API_KEY` in `.env`. Leave it empty to start in Demo mode.
 
 ```sh
 npm run dev
 ```
 
-Open **http://127.0.0.1:5174**. The local API listens on `127.0.0.1:3001`; Vite proxies `/api` requests to it. Both servers bind to loopback only. The development port is fixed so an occupied port produces an explicit error.
+Open **http://127.0.0.1:5174**. The local API runs at **http://127.0.0.1:3001**. Both servers bind to loopback only. If this project is already running, open the existing session instead of starting another copy.
 
-The backend rereads the API key from `.env` automatically. Other settings require restarting the server. `.env` and the local SQLite cache are excluded from Git. Never put the key in a `VITE_` variable, the browser, or a commit.
+The backend picks up API-key changes automatically. Restart it after changing other server settings. Demo mode uses a fixed **19 October 2026** snapshot and is explicitly labelled; it does not show current positions.
 
-Without a key, the app opens in **Demo** mode. Demo uses ten bundled CelesTrak orbital-element snapshots from 19 October 2026 and a corresponding simulated clock. Switch to **Live** after adding a key. Demo and live elements are kept separate.
+## Using the tracker
 
-## Controls
+| Action | Controls |
+| --- | --- |
+| Add satellites | **Add satellite**, then search by name or NORAD ID |
+| Inspect a satellite | Click its marker or its watchlist row |
+| Show, hide or remove | Use the eye or remove button in the watchlist |
+| Rotate and zoom | Drag the globe; scroll or use `+` / `−` |
+| Follow from above | Click the row's crosshair or **Follow**; click again to stop |
+| Ride onboard | Select a satellite, then choose **Go onboard** |
+| Look around onboard | Drag with mouse/touch, or focus the view and use arrow keys |
+| Change onboard gaze | **Look ahead**, **Earth** or **Space**; scroll changes field of view |
+| Leave onboard mode | **Return to Earth view**, **Reset camera**, or Escape while the view has focus |
+| Measure separation | **Measure distance**, then choose satellites A and B |
+| Change Earth appearance | **Earth style**, **Country borders** and **Country names** |
+| Rewind | **History & replay**, then scrub, enter a UTC time or choose a playback speed |
+| Clear the view | Click the **View controls** heading to minimize or expand it |
 
-- Drag the globe to orbit the camera; scroll or use `+` / `−` to zoom.
-- Choose **Add satellite** to search the local active-satellite catalogue by name, partial name or NORAD ID. A numeric NORAD ID can also be entered directly for objects outside the catalogue.
-- Click a satellite marker or a row in the watchlist to inspect it. Use a row's crosshair or **Center & follow satellite** to view it directly from above, keeping Earth centered and rotating the viewpoint with the satellite, in live mode and replay. Zoom remains available; stop following to rotate the camera freely; **Reset camera** returns to Earth.
-- Select a satellite and choose **Go onboard** in the left-side view controls to ride at its interpolated position. Drag with a mouse or touch to look around; after clicking the view, arrow keys also turn your gaze. Scroll or use `+` / `−` to change the field of view. **Look ahead** restores the initial view toward the orbital horizon, **Earth** looks straight down, and **Space** looks away from Earth. **Return to Earth view**, **Reset camera**, or Escape while the view has focus exits onboard mode. Onboard viewing works in live mode and paused, forward or reverse replay. Its frame uses the orbital direction and radial up; it does not represent measured spacecraft attitude. The ridden satellite's marker, label and path are hidden to keep the view clear. Other satellites remain visible, and selecting another satellite transfers the view to it.
-- Use **View controls** inside the orbital view along its left edge for camera zoom/reset, orbits, labels, recent paths, sunlight and the geographic grid. History playback and follow status are there too, leaving the globe unobstructed. Click the panel heading to minimize it into a compact button or expand it again; this preference is remembered in your browser.
-- Choose **Measure distance** in View controls and select two tracked satellites by name / NORAD ID. The readout gives their predicted straight-line separation in kilometers, including altitude, and updates in live mode, demo and replay. An altitude difference readout also identifies which satellite is higher. A gold connection follows their predicted orbital positions; Earth naturally occludes it. Measurements use orbital states without visual marker easing. The panel shows the measurement UTC time; **Orbit data** lists the available element epochs and fetch times. The line-of-sight indicator checks against the Earth globe. Turn off **Show connection** to keep only the readout, or **Stop measuring** to clear the tool. Hidden satellites can still be measured numerically; show both to draw the connection. Missing orbital data produces no reading. Measurement uses existing local orbital calculations and makes no additional N2YO requests.
-- Under **Earth style**, switch between NASA **Imagery**, **Natural Earth**, **Gray Earth**, and a dark **Country map**. Optional **Country borders** and **Country names** work with every style. Your choice is saved in this browser. Textures are bundled locally and consume no N2YO requests. Turn off **Sunlight** for even map illumination; map styles also retain some night-side brightness to keep geography readable.
-- Use each row's eye to show or hide a satellite; use its `×` to remove it. The watchlist is saved in this browser.
-- Earth and orbital distances use the same scale. Satellite markers are enlarged so they remain visible; they do not represent actual spacecraft size or attitude.
+View controls stay along the **left edge of the orbital view**. The watchlist, Earth appearance and minimized-panel preference are saved in this browser.
 
-## Motion and API usage
+Follow mode keeps Earth centered and places the viewpoint above the selected satellite. Onboard mode rides at the satellite's predicted position, with an orbit-relative viewing frame. Its own marker and path are hidden for visibility. This is a simulated viewpoint; orbital elements do not provide the spacecraft's actual attitude.
 
-N2YO supplies **TLE orbital elements**. A browser worker runs SGP4/SDP4 twice per second and calculates bracketing positions and velocities. The renderer uses cubic Hermite interpolation between them, including during accelerated or reverse playback. Earth rotation, sunlight, camera following and latitude/longitude calculations share the same simulation clock. New element sets are visually blended to avoid position jumps.
+Distance measurements use orbital states independently of visual marker smoothing. The panel shows straight-line separation, altitude difference and the measurement's UTC time. **Orbit data** shows element epochs and fetch times. Hidden satellites can still be measured numerically; show both to draw the connection.
 
-The app currently uses only N2YO's `tle` endpoint, documented at **1,000 requests per rolling hour**. It never polls satellite positions for animation. Default cache lifetime is **6 hours**: 50 satellites need 50 initial fetches and about 200 fetches per day during continuous use. Selecting cached satellites, typing in search and opening another tab do not create duplicate upstream requests.
+## How motion and API limits work
 
-The server:
+The backend requests **TLE orbital elements**, rather than polling N2YO positions for animation. A browser worker propagates the orbits twice per second; cubic Hermite interpolation produces smooth motion between those calculations, including during reverse and accelerated replay.
 
-- Persists cached elements, an append-only archive of every successful TLE fetch and its source response, and request timestamps in `.data/tracker.sqlite`.
-- Enforces a rolling budget of **800 attempted requests/hour**, counted before network access and retained through restarts.
-- Serializes and spaces upstream requests by at least 1.1 seconds; deduplicates concurrent requests for the same satellite.
-- Watches N2YO's reported transaction count and pauses when the configured budget is reached. HTTP 429 pauses upstream requests for one hour.
-- Backs off after failed requests and keeps stale cached elements available, with a visible warning.
-- Validates element checksums and NORAD IDs, including Alpha-5 TLE catalogue identifiers.
+| Protection | Default behavior |
+| --- | --- |
+| Persistent TLE cache | Reuse each element set for 6 hours |
+| Shared rolling budget | At most 800 attempted upstream requests per hour |
+| Request spacing | At least 1.1 seconds between upstream requests |
+| Concurrent requests | Deduplicated for the same satellite |
+| Upstream rate limit | Pause requests for an hour on HTTP 429 |
+| Other failures | Back off and retain stale cached elements when available |
 
-Use a dedicated N2YO key for this app if possible. Its local request counter cannot account continuously for unrelated software using the same key; N2YO's last reported count is also monitored. Predicted positions depend on element age and unmodelled maneuvers. This app does not receive live position or attitude telemetry.
+[N2YO currently documents 1,000 TLE transactions per hour](https://www.n2yo.com/api/); Orbit uses a lower default budget. With 50 satellites and a six-hour refresh interval, continuous use needs roughly **200 TLE requests per day**, excluding additional cache misses. Search, rendering, camera changes, distance measurements and replay do not create extra N2YO requests.
 
-Optional `.env` settings:
+The backend also monitors N2YO's reported usage. Its local counter cannot fully account for another application using the same key.
 
-| Setting | Default | Range |
+## History and local data
+
+Orbital data is stored in **`.data/tracker.sqlite`**. Every successful N2YO fetch appends a timestamped snapshot, even when the TLE is unchanged. Previous snapshots and successful source data are retained; credentials and upstream request URLs are not archived.
+
+Replay uses each satellite's **last snapshot fetched at or before the selected time**. Satellites without a snapshot at that time are hidden. It switches element sets as playback crosses snapshot boundaries and never substitutes a later element set for missing historical data.
+
+History reconstructs predicted positions from saved orbital elements. Collection happens when the running app fetches data; leaving only the backend running does not schedule unattended collection. The archive has no automatic expiry and cannot backfill history from before the first saved fetch.
+
+To back up your history, stop the local server and copy `.data/`. Database files, caches and local `docs/` notes are excluded from Git.
+
+## Configuration and key handling
+
+Set these in `.env`, or supply them as server environment variables:
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| `PORT` | `3001` | 1024–65535 |
-| `TLE_REFRESH_HOURS` | `6` | 1–24 |
-| `N2YO_HOURLY_BUDGET` | `800` | 1–900 |
+| `N2YO_API_KEY` | Empty | Server-only key; empty starts Demo mode |
+| `PORT` | `3001` | Local API / production-server port, 1024–65535 |
+| `TLE_REFRESH_HOURS` | `6` | TLE cache lifetime, 1–24 hours |
+| `N2YO_HOURLY_BUDGET` | `800` | Maximum attempted upstream requests per rolling hour, 1–900 |
 
-## History and replay
+The API key stays in the local backend. **Never prefix it with `VITE_`**, paste it into an issue or screenshot, or commit a populated environment file. `.env` and its local variants are ignored; `.env.example` contains no credential. Development file serving also blocks environment files, Git internals, local archives, caches and notes.
 
-Open **History & replay** along the left edge of the orbital view under **View controls**. Drag the timeline, enter a UTC date/time, or step backward/forward a minute. Play, pause, or choose a speed from −60× to 60×. **Return to live** restores the current time; forward playback also returns to live when it catches up, and reverse playback pauses at the beginning of saved history.
+The production server serves only the built `dist/` directory. This project is designed for local use and does not include authentication for an internet-facing deployment. Fonts load from Google Fonts when available, with local system-font fallbacks.
 
-Every successful N2YO fetch is retained as a separate, timestamped snapshot, even if its TLE is unchanged. Refreshing the latest cache never overwrites previous history. Each new snapshot also stores the successful source response (`info` and `tle`); credentials and request URLs are never archived. Cached reads do not create duplicates. Existing cached elements are automatically migrated into the archive on startup, without deleting or refetching them. Historical raw responses from before this upgrade cannot be recovered, but their cached element data is retained.
+## Accuracy
 
-For a requested time, replay uses each satellite's **last snapshot fetched at or before that time**. Satellites not yet recorded are hidden and marked “Not yet recorded”; the app never substitutes a later TLE and presents it as historical data. When playback crosses a saved snapshot boundary, it loads the corresponding element set automatically. Satellite positions, labels, Earth lighting, telemetry and camera following all use the replay clock.
+Positions, distances and close approaches are **predictions from orbital elements**. Their accuracy depends on element age, tracking quality and maneuvers that may not yet be reflected in the data. Decimal places in a distance readout are not a measurement-accuracy guarantee.
 
-Replayed positions are reconstructed predictions from saved TLEs, rather than recordings of actual spacecraft telemetry. Storing the source elements allows arbitrary-time playback without saving millions of rendered positions. Replay reads only the local database and makes no additional N2YO requests. The normal live cache refresh can continue in the background while the app is open.
+The globe uses a common Earth-distance scale and enlarged satellite markers. Line-of-sight obstruction uses the rendered Earth sphere. This app does not receive live spacecraft position or attitude telemetry, and public TLE data cannot establish meter-scale proximity for a maneuvering pair without more precise tracking information.
 
-The archive has no automatic expiration. Recording occurs when the running app fetches data; closing the app does not continue unattended collection. History predating the first saved fetch cannot be backfilled from N2YO's current-TLE endpoint. The local database and backups remain outside Git. To back up the archive yourself, stop the local server and copy the `.data/` directory.
-
-Local, read-only history endpoints:
-
-- `GET /api/history?ids=25544,20580` — available ranges and snapshot counts. Omitting `ids` lists all archived satellites.
-- `GET /api/history/elements?ids=25544,20580&at=<unix-milliseconds>` — elements known at that UTC instant, missing satellite IDs, and the time interval for which the result applies.
-
-Historical request timestamps are retained; only those within the rolling hour count toward the active quota.
-
-## Search catalogue
-
-Name search uses a bundled **CelesTrak active-satellite catalogue**, initially containing 15,928 entries, supplemented with previously archived satellite names. It is independent of N2YO and consumes no N2YO requests. It is a dated snapshot, rather than a live list of every object in orbit. Display names for the ten starter satellites include familiar aliases such as “ISS” and “Hubble”.
-
-To update it manually (at most once a day):
-
-```sh
-npm run catalog:update
-```
-
-Restart the local API afterward. Updating this catalogue changes names and IDs only; live orbital elements still come from N2YO. The bundled demo snapshot remains fixed.
-
-## Checks and production build
+## Development
 
 ```sh
 npm test
 npm run build
+```
+
+Tests cover API budgets and deduplication, error handling, history migration and snapshot boundaries, orbital reference cases, interpolation through 60× playback, camera geometry and onboard controls, and satellite-distance calculations checked against independent SGP4 reference results. N2YO test responses are mocked; the suite spends no real API requests.
+
+After building, run the app and API together with:
+
+```sh
 npm start
 ```
 
-After building, `npm start` serves the app and API together at **http://127.0.0.1:3001**. Stop the development server first to release the API port.
+Open **http://127.0.0.1:3001**, or the configured `PORT`. Stop the development API first if it already uses that port.
 
-Tests cover rolling quotas through restarts, duplicate requests, stale-data fallback, upstream rate limits, credential loading, Alpha-5 IDs, the Vallado SGP4 reference case, orbital coordinates, database migration, historical snapshot boundaries, pause/seek/reverse clocks, and interpolation error through 60× playback. Automated tests use mocked N2YO responses and consume no real API requests.
+Optional maintenance commands:
 
-## Source layout
+| Command | Purpose |
+| --- | --- |
+| `npm run catalog:update` | Refresh the bundled CelesTrak name catalogue; run at most once daily, then restart the API |
+| `npm run assets:earth` | Rebuild map textures from public-domain Natural Earth data; requires `unzip` |
+
+These commands download external data. Earth textures and the catalogue are already bundled, so neither is required for normal startup. The catalogue is a dated active-satellite snapshot, supplemented with archived names; numeric ID entry supports objects outside it.
+
+<details>
+<summary>Local history API</summary>
+
+- `GET /api/history?ids=25544,20580` — available ranges and snapshot counts; omit `ids` to list all archived satellites.
+- `GET /api/history/elements?ids=25544,20580&at=<unix-milliseconds>` — as-of orbital elements, missing IDs and the result's validity interval.
+
+</details>
+
+<details>
+<summary>Source layout</summary>
 
 | Path | Purpose |
 | --- | --- |
-| `src/App.tsx` | Watchlist, catalogue search, controls and telemetry |
-| `src/Scene.tsx` | Earth shader, atmosphere, orbits, markers and camera |
-| `src/engine.worker.ts` | Local orbital calculations |
-| `src/Timeline.tsx`, `src/useArchive.ts` | Historical playback controls and database reads |
-| `shared/clock.ts` | Simulation clock and orbit interpolation |
-| `shared/orbits.ts` | Propagation, units and coordinate conventions |
-| `server/n2yo.ts` | Cached N2YO client, validation and request scheduling |
-| `server/store.ts` | Persistent SQLite cache, orbital history and rolling quota |
+| `src/App.tsx` | Watchlist, controls and telemetry |
+| `src/Scene.tsx`, `src/OnboardCamera.tsx` | Globe, markers and camera modes |
+| `src/engine.worker.ts` | Local orbital propagation |
+| `src/Timeline.tsx`, `src/useArchive.ts` | History playback |
+| `src/DistanceTool.tsx`, `src/DistanceMeasurement.tsx` | Distance controls and connection rendering |
+| `shared/` | Orbital coordinates, clocks, camera geometry and distance calculations |
+| `server/n2yo.ts`, `server/store.ts` | Upstream requests, SQLite cache and archive |
 
-API reference: https://www.n2yo.com/api/
+</details>
 
-Asset sources and attribution: [ASSETS.md](ASSETS.md).
+## Credits
 
-Distance validation and the ICEYE-X36 / COSMOS 2612 comparison: [19 October 2026 audit](docs/distance-audit-2026-10-19.md).
+Earth imagery: **NASA Earth Observatory**. Map styles and geographic overlays: **Natural Earth**, public domain. Satellite name catalogue and demo elements: **CelesTrak**. Live orbital elements: **N2YO**.
+
+See [ASSETS.md](ASSETS.md) for data sources, asset credits and third-party terms.
