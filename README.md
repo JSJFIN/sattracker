@@ -19,11 +19,16 @@ Explore Earth and its satellites in 3D. **Orbit** is a local satellite tracker b
 
 ## Quick start
 
-Requires **Node.js 24 or later**, npm and a browser with WebGL / hardware acceleration enabled.
+Requires **Node.js 24 LTS, version 24.22.1 or newer within the 24.x line**, npm and a browser with WebGL / hardware acceleration enabled. This minimum includes the [October 2026 security fixes](https://nodejs.org/en/blog/release/v24.22.1/). npm rejects unsupported Node versions during installation.
 
 ```sh
 git clone https://github.com/JSJFIN/sattracker.git
 cd sattracker
+```
+
+If you use **nvm**, run `nvm install` followed by `nvm use` in this directory to select the version in `.nvmrc`. Then install dependencies:
+
+```sh
 npm ci
 ```
 
@@ -45,6 +50,8 @@ npm run dev
 Open **http://127.0.0.1:5174**. The local API runs at **http://127.0.0.1:3001**. Both servers bind to loopback only. If this project is already running, open the existing session instead of starting another copy.
 
 The backend picks up API-key changes automatically. Restart it after changing other server settings. Demo mode uses a fixed **19 October 2026** snapshot and is explicitly labelled; it does not show current positions.
+
+After upgrading Node.js, stop the existing development server with **Ctrl+C**, select the updated version (`nvm use` with nvm), and run `npm run dev` again. Already-running processes keep using their original Node executable until restarted.
 
 ## Using the tracker
 
